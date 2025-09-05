@@ -8,6 +8,8 @@ const companyRoutes = require('./routes/companyRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const holidayRoutes = require('./routes/holidayRoutes');
 const todosRoutes = require('./routes/todosRoutes');
+const authMiddleware = require('./middleware/authMiddleware');
+const cors = require('cors');
 
 require('dotenv').config();
 
@@ -15,9 +17,14 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
-
+app.use(cors({
+  origin: 'http://localhost:3000', // frontend URL
+  credentials: true, // if you need to send cookies or auth headers
+}));
 // Middleware to parse JSON bodies
 app.use(express.json());
+
+
 
 // Basic route to check API status
 app.get('/', (req, res) => res.send('API is running...'));
@@ -29,7 +36,8 @@ app.use('/api/franchises', franchiseRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/holidays', holidayRoutes);
-app.use('/api/todos',todosRoutes);
+app.use('/api/todos', authMiddleware, todosRoutes);
+
 
 // Start the server
 const PORT = process.env.PORT || 5000;

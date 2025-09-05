@@ -4,6 +4,7 @@ const Todos = require('../models/Todos');
 // Create To-Do
 exports.createTodo = async (req, res) => {
   try {
+    console.log('req.user:', req.user);
     const { title, description, status, dueDate } = req.body;
     const { userId } = req.user; // assuming user info is in req.user
 

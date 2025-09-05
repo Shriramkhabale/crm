@@ -11,7 +11,7 @@ const authMiddleware = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = {
-      userId: decoded.id,
+      userId: decoded.userId, // <-- this line fixed
       role: decoded.role,
     };
     next();
@@ -19,5 +19,7 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ message: 'Unauthorized: Invalid token' });
   }
 };
+
+
 
 module.exports = authMiddleware;
