@@ -2,6 +2,7 @@ const Company = require('../models/Company');
 const bcrypt = require('bcryptjs');
 
 exports.createCompany = async (req, res) => {
+  console.log('Authenticated user:', req.user);
   try {
     let {
       businessName,
@@ -17,7 +18,6 @@ exports.createCompany = async (req, res) => {
       franchise
     } = req.body;
 
-    // Convert weeklyHoliday to array if string
     if (typeof weeklyHoliday === 'string') {
       weeklyHoliday = [weeklyHoliday];
     }
@@ -25,20 +25,14 @@ exports.createCompany = async (req, res) => {
     const existing = await Company.findOne({ businessEmail });
     if (existing) return res.status(400).json({ message: 'Company email already exists' });
 
-    // Hash password if provided
-    let hashedPassword = undefined;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-
     const company = new Company({
-      superadmin: req.user.userId,
+      superadmin: req.user.id,  // make sure req.user is set
       franchise,
       businessName,
       businessEmail,
       businessPhone,
       EmergencyMobNo,
-      password: hashedPassword,
+      password,  // assign plain password here
       businessCreatedDate,
       businessSubscriptionPlan,
       weeklyHoliday,
@@ -55,10 +49,11 @@ exports.createCompany = async (req, res) => {
 };
 
 
+
 // Get all companies for superadmin
 exports.getCompanies = async (req, res) => {
   try {
-    const companies = await Company.find({ superadmin: req.user.userId }); 
+    const companies = await Company.find({ superadmin: req.user.id }); 
     res.json(companies);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
@@ -84,7 +79,7 @@ exports.getCompanyById = async (req, res) => {
 exports.updateCompany = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await Company.findOne({ _id: id, superadmin: req.user.userId });
+    const company = await Company.findOne({ _id: id, superadmin: req.user.id });
     if (!company) return res.status(404).json({ message: 'Company not found' });
 
     Object.assign(company, req.body);
@@ -100,7 +95,7 @@ exports.updateCompany = async (req, res) => {
 exports.deleteCompany = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await Company.findOneAndDelete({ _id: id, superadmin: req.user.userId });
+    const company = await Company.findOneAndDelete({ _id: id, superadmin: req.user.id });
     if (!company) return res.status(404).json({ message: 'Company not found' });
 
     res.json({ message: 'Company deleted' });
