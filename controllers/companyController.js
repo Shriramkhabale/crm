@@ -48,8 +48,6 @@ exports.createCompany = async (req, res) => {
   }
 };
 
-
-
 // Get all companies for superadmin
 exports.getCompanies = async (req, res) => {
   try {

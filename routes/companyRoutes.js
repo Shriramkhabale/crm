@@ -5,7 +5,6 @@ const authorizeRole = require('../middleware/authorizeRole');
 const companyController = require('../controllers/companyController');
 
 router.use(protect);
-router.use(authorizeRole('superadmin'));
 
 router.post('/', companyController.createCompany);
 router.get('/', companyController.getCompanies);

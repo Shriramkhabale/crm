@@ -1,8 +1,13 @@
+//authRoutes.js
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const protect = require('../middleware/protect');
+const authMiddleware = require('../middleware/authMiddleware'); 
 const authorizeRole = require('../middleware/authorizeRole');
+const changePasswordController = require('../controllers/changePasswordController');
+
+router.post('/change-password', authMiddleware, changePasswordController.changePassword);
 
 // Register superadmin (initially unprotected)
 router.post('/register-superadmin', authController.registerSuperadmin);
