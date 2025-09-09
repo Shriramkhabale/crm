@@ -3,6 +3,16 @@
 const Task = require('../models/Task');
 const Employee = require('../models/Employee');
 
+async function getCompanyIdFromUser (user) {
+  if (user.role === 'company') {
+    return user.userId; // userId is companyId
+  } else{
+    // Find employee by userId and get companyId
+    const employee = await Employee.findById(user.userId).select('company');
+    if (!employee) throw new Error('Employee not found');
+    return employee.company.toString();
+  } 
+}
 const validWeekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 exports.createTask = async (req, res) => {
@@ -123,7 +133,8 @@ exports.getAllTasks = async (req, res) => {
   try {
     console.log('req.user:', req.user);
 
-    const company = req.user.userId ? req.user.userId.toString() : null;
+     const company = await getCompanyIdFromUser (req.user);
+    // const company = req.user.userId ? req.user.userId.toString() : null;
     if (!company) {
       return res.status(400).json({ message: 'Company ID not found in user data' });
     }
@@ -155,7 +166,9 @@ exports.getAllTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
   try {
     const { id } = req.params;
-      const company = req.user.userId;
+      // const company = req.user.userId;
+           const company = await getCompanyIdFromUser (req.user);
+
     const task = await Task.findOne({ _id: id, company})
       .populate('assignedTo', 'firstName role')
       .populate('createdBy', 'firstName role')
@@ -177,8 +190,9 @@ exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
     console.log("req.user",req.user);
-    
-    const company = req.user.userId;
+         const company = await getCompanyIdFromUser (req.user);
+
+    // const company = req.user.userId;
     const updateData = req.body;
     // Optional: Validate repeat fields if they are updated
     if (updateData.repeat) {
@@ -239,8 +253,10 @@ exports.updateTask = async (req, res) => {
 exports.deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = req.user.userId;
     
+    // const company = req.user.userId;
+    const company = await getCompanyIdFromUser (req.user);
+
     const task = await Task.findOneAndDelete({ _id: id, company });
     if (!task) {
       return res.status(404).json({ message: 'Task not found or not authorized' });

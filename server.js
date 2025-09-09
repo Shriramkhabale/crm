@@ -10,6 +10,11 @@ const employeeRoutes = require('./routes/employeeRoutes');
 const holidayRoutes = require('./routes/holidayRoutes');
 const todosRoutes = require('./routes/todosRoutes');
 const tasksRoutes = require('./routes/taskRoutes')
+const workflowRoutes = require('./routes/workflowRoutes')
+const leadRoutes = require('./routes/leadRoutes')
+const productFieldRoutes = require('./routes/productFieldRoutes');
+const projectMgntRoutes = require('./routes/projectMgntRoutes');
+
 const authMiddleware = require('./middleware/authMiddleware');
 
 const cors = require('cors');
@@ -40,6 +45,10 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/holidays', holidayRoutes);
 app.use('/api/todos', authMiddleware, todosRoutes);
 app.use('/api/task', authMiddleware, tasksRoutes);
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/lead', leadRoutes);
+app.use('/api/product-fields', productFieldRoutes);
+app.use('/api/projectsmgnt', projectMgntRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
