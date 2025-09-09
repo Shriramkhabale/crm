@@ -16,6 +16,8 @@ const projectMgntRoutes = require('./routes/projectMgntRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const workflowRoutes = require('./routes/workFlowRoutes');
+const leaveRoutes = require('./routes/leaveRoutes');
+const milestoneRoutes = require('./routes/milestoneRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -53,6 +55,8 @@ app.use('/api/product-fields', productFieldRoutes);
 app.use('/api/projectsmgnt', projectMgntRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/milestones', milestoneRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
