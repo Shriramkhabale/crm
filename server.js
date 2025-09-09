@@ -9,13 +9,13 @@ const departmentRoutes = require('./routes/departmentRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const holidayRoutes = require('./routes/holidayRoutes');
 const todosRoutes = require('./routes/todosRoutes');
-const tasksRoutes = require('./routes/taskRoutes')
-const workflowRoutes = require('./routes/workflowRoutes')
-const leadRoutes = require('./routes/leadRoutes')
+const tasksRoutes = require('./routes/taskRoutes');
+const leadRoutes = require('./routes/leadRoutes');
 const productFieldRoutes = require('./routes/productFieldRoutes');
 const projectMgntRoutes = require('./routes/projectMgntRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const roleRoutes = require('./routes/roleRoutes');
+const workflowRoutes = require('./routes/workFlowRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
