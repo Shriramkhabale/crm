@@ -18,6 +18,8 @@ const roleRoutes = require('./routes/roleRoutes');
 const workflowRoutes = require('./routes/workFlowRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
 const milestoneRoutes = require('./routes/milestoneRoutes');
+const customerGrpTypeRoutes = require('./routes/customerGrpTypeRoutes');
+const customerRoutes = require('./routes/customerRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -57,6 +59,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/milestones', milestoneRoutes);
+app.use('/api/custgrouptypes', customerGrpTypeRoutes);
+app.use('/api/customers', customerRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
