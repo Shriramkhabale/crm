@@ -12,6 +12,7 @@ const projectSchema = new mongoose.Schema({
   budget: { type: Number, min: 0 },
   teamMembers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
   progress: { type: Number, min: 0, max: 100, default: 0 },
+  department:{ type: String },
   clientName: { type: String },
   clientEmail: { type: String, match: /.+\@.+\..+/ },
   clientMobileNo: { type: String },

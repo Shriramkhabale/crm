@@ -39,7 +39,7 @@ exports.createTask = async (req, res) => {
 
     // const createdBy = req.user.userId; // from auth middleware
     const company = req.user.companyId || bodyCompany; // from auth middleware
-console.log("createdBy",createdBy);
+console.log("createdBy 42",createdBy);
 
 const companyStr = company.toString();
     // Basic required fields
@@ -138,7 +138,7 @@ exports.getAllTasks = async (req, res) => {
     if (!company) {
       return res.status(400).json({ message: 'Company ID not found in user data' });
     }
-  console.log("company",company);
+  console.log("company 141",company);
 
     const filters = { company };
     if (req.query.assignedTo) filters.assignedTo = req.query.assignedTo;
