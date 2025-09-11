@@ -16,6 +16,7 @@ exports.createEmployee = async (req, res) => {
       shift,
       department,
       role,
+      designation,
       aadharNumber,
       panNumber,
       userUpi,
@@ -45,6 +46,7 @@ exports.createEmployee = async (req, res) => {
       shift,
       department,
       role,
+      designation,
       aadharNumber,
       panNumber,
       userUpi,
@@ -81,6 +83,7 @@ exports.updateEmployee = async (req, res) => {
       shift,
       department,
       role,
+      designation,
       aadharNumber,
       panNumber,
       userUpi,
@@ -99,6 +102,7 @@ exports.updateEmployee = async (req, res) => {
     if (shift) employee.shift = shift;
     if (department) employee.department = department;
     if (role) employee.role = role;
+    if (designation) employee.designation = designation;
     if (aadharNumber) employee.aadharNumber = aadharNumber;
     if (panNumber) employee.panNumber = panNumber;
     if (userUpi) employee.userUpi = userUpi;

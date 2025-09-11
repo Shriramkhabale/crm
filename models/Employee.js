@@ -14,6 +14,7 @@ const employeeSchema = new mongoose.Schema({
   shift: { type: String },                             // Shift (dynamic dropdown)
   department: { type: String, required: true },       // Department (dynamic dropdown)
   role: {type: String},
+  designation:{type: String},
   aadharNumber: { type: String },                       // Aadhar Number
   panNumber: { type: String },                          // Pan Number
   userUpi: { type: String },                            // User Upi

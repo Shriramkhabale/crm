@@ -45,6 +45,8 @@ exports.login = async (req, res) => {
   try {
     // Check Superadmin
     let user = await Superadmin.findOne({ email });
+    console.log("user1",user);
+    
     if (user) {
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
@@ -66,7 +68,13 @@ exports.login = async (req, res) => {
 
     // Check Employee
     user = await Employee.findOne({ email });
+    
+
     if (user) {
+      console.log("user2",user);
+      console.log("password",password);
+      console.log("password",password);
+      
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
 
@@ -87,6 +95,8 @@ exports.login = async (req, res) => {
 
     // Check Company
     user = await Company.findOne({ businessEmail: email });
+    console.log("user23",user);
+
     if (user) {
       if (!user.password) return res.status(400).json({ message: 'Company user has no password set' });
 
