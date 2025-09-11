@@ -10,4 +10,6 @@ router.get('/tasks/:id', authMiddleware, taskController.getTaskById);
 router.put('/tasks/:id', authMiddleware, taskController.updateTask);
 router.delete('/tasks/:id', authMiddleware, taskController.deleteTask);
 
+router.put('/:taskId/shifttask', authMiddleware, taskController.shiftedTask);
+
 module.exports = router;

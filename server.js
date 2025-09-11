@@ -20,6 +20,8 @@ const leaveRoutes = require('./routes/leaveRoutes');
 const milestoneRoutes = require('./routes/milestoneRoutes');
 const customerGrpTypeRoutes = require('./routes/customerGrpTypeRoutes');
 const customerRoutes = require('./routes/customerRoutes');
+const productRoutes = require('./routes/productRoutes');
+const taskStatusUpdateRoutes = require('./routes/taskStatusUpdateRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -61,6 +63,8 @@ app.use('/api/leaves', leaveRoutes);
 app.use('/api/milestones', milestoneRoutes);
 app.use('/api/custgrouptypes', customerGrpTypeRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/taskstatusupdate', taskStatusUpdateRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;

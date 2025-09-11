@@ -20,6 +20,7 @@ exports.createProject = async (req, res) => {
     const {
       title,
       description,
+      department,
       status,
       startDate,
       dueDate,
@@ -27,6 +28,7 @@ exports.createProject = async (req, res) => {
       teamMembers,
       progress,
       clientName,
+      clientCompany,
       clientEmail,
       clientMobileNo,
     } = req.body;
@@ -37,6 +39,7 @@ exports.createProject = async (req, res) => {
 
     const project = new ProjectMgnt({
       company,
+      department,
       title,
       description,
       status,
@@ -46,6 +49,7 @@ exports.createProject = async (req, res) => {
       teamMembers,
       progress,
       clientName,
+      clientCompany,
       clientEmail,
       clientMobileNo,
     });
@@ -106,6 +110,7 @@ exports.updateProject = async (req, res) => {
     const {
       title,
       description,
+      department,
       status,
       startDate,
       dueDate,
@@ -113,12 +118,14 @@ exports.updateProject = async (req, res) => {
       teamMembers,
       progress,
       clientName,
+      clientCompany,
       clientEmail,
       clientMobileNo,
     } = req.body;
 
     if (title !== undefined) project.title = title;
     if (description !== undefined) project.description = description;
+    if (department !== undefined) project.department = department;
     if (status !== undefined) project.status = status;
     if (startDate !== undefined) project.startDate = startDate;
     if (dueDate !== undefined) project.dueDate = dueDate;
@@ -126,6 +133,7 @@ exports.updateProject = async (req, res) => {
     if (teamMembers !== undefined) project.teamMembers = teamMembers;
     if (progress !== undefined) project.progress = progress;
     if (clientName !== undefined) project.clientName = clientName;
+    if (clientCompany !== undefined) project.clientCompany = clientCompany;
     if (clientEmail !== undefined) project.clientEmail = clientEmail;
     if (clientMobileNo !== undefined) project.clientMobileNo = clientMobileNo;
 
@@ -149,7 +157,7 @@ exports.deleteProject = async (req, res) => {
     }
 
     res.json({ message: 'ProjectMgnt deleted successfully' });
-  } catch (error) {
+  } catch (error) {    
     res.status(500).json({ message: error.message });
   }
 };

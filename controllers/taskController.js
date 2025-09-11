@@ -2,6 +2,8 @@
 
 const Task = require('../models/Task');
 const Employee = require('../models/Employee');
+const TaskStatusUpdate = require('../models/TaskStatusUpdate');
+
 
 async function getCompanyIdFromUser (user) {
   if (user.role === 'company') {
@@ -31,8 +33,8 @@ exports.createTask = async (req, res) => {
       priority,
       nextFollowUpDateTime,
       nextFinishDateTime,
-      branch,
       createdBy,
+      status,
       company: bodyCompany
     } = req.body;
 
@@ -116,7 +118,7 @@ if (!assignee) {
       nextFollowUpDateTime: !repeat ? nextFollowUpDateTime : undefined,
       nextFinishDateTime: repeat ? nextFinishDateTime : undefined,
       company,
-      branch,
+      status,
       createdBy,
     });
 
@@ -152,7 +154,6 @@ exports.getAllTasks = async (req, res) => {
     const tasks = await Task.find(filters)
       .populate('assignedTo', 'firstName role')
       .populate('createdBy', 'firstName role')
-      .populate('branch', 'name')
       .sort({ createdAt: -1 });
 
     res.json({ tasks });
@@ -172,7 +173,6 @@ exports.getTaskById = async (req, res) => {
     const task = await Task.findOne({ _id: id, company})
       .populate('assignedTo', 'firstName role')
       .populate('createdBy', 'firstName role')
-      .populate('branch', 'name');
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
@@ -264,6 +264,55 @@ exports.deleteTask = async (req, res) => {
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
     console.error('Delete task error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+exports.shiftedTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { newAssigneeId, description, nextFollowUp } = req.body;
+    const shiftedBy = req.user._id; // assuming auth middleware sets req.user
+
+    if (!newAssigneeId) {
+      return res.status(400).json({ message: 'New assignee ID is required' });
+    }
+
+    // Find the task
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const oldAssigneeId = task.assignedTo;
+
+    // Update assignedTo and optionally nextFollowUpDateTime
+    task.assignedTo = newAssigneeId;
+    if (nextFollowUp) {
+      const nextFollowUpDate = new Date(nextFollowUp);
+      if (isNaN(nextFollowUpDate)) {
+        return res.status(400).json({ message: 'Invalid nextFollowUp date' });
+      }
+      task.nextFollowUpDateTime = nextFollowUpDate;
+    }
+    await task.save();
+
+    // Create status update entry
+    const statusUpdate = new TaskStatusUpdate({
+      task: taskId,
+      status: 'reassigned',
+      description: description || `Task reassigned from ${oldAssigneeId} to ${newAssigneeId}`,
+      nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
+      shiftedBy,
+      oldAssigneeId
+    });
+
+    await statusUpdate.save();
+
+    res.json({ message: 'Task reassigned successfully', task, statusUpdate });
+  } catch (error) {
+    console.error('Reassign task error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

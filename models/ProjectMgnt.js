@@ -14,6 +14,7 @@ const projectSchema = new mongoose.Schema({
   progress: { type: Number, min: 0, max: 100, default: 0 },
   department:{ type: String },
   clientName: { type: String },
+  clientCompany: { type: String },
   clientEmail: { type: String, match: /.+\@.+\..+/ },
   clientMobileNo: { type: String },
 }, { timestamps: true });
