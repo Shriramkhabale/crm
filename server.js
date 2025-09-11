@@ -22,6 +22,7 @@ const customerGrpTypeRoutes = require('./routes/customerGrpTypeRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const productRoutes = require('./routes/productRoutes');
 const taskStatusUpdateRoutes = require('./routes/taskStatusUpdateRoutes');
+const supportRoutes = require('./routes/supportRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -65,6 +66,7 @@ app.use('/api/custgrouptypes', customerGrpTypeRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/taskstatusupdate', taskStatusUpdateRoutes);
+app.use('/api/support-ticket', supportRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
