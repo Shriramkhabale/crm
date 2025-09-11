@@ -23,6 +23,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const productRoutes = require('./routes/productRoutes');
 const taskStatusUpdateRoutes = require('./routes/taskStatusUpdateRoutes');
 const supportRoutes = require('./routes/supportRoutes');
+const shifts = require('./routes/shiftRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -67,6 +68,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/taskstatusupdate', taskStatusUpdateRoutes);
 app.use('/api/support-ticket', supportRoutes);
+app.use('/api/shifts', shifts);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
