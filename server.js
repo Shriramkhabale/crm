@@ -41,6 +41,7 @@ app.use(cors({
 
 // Middleware to parse JSON bodies
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Basic route to check API status
 app.get('/', (req, res) => res.send('API is running...'));
