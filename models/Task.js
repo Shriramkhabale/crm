@@ -4,15 +4,14 @@ require('../models/Employee');  // adjust path as needed
 const taskSchema = new mongoose.Schema({
   title: { type: String},
   description: String,
-  department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' }, 
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  department: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }], 
+  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
   startDateTime: { type: Date },
   endDateTime: { type: Date},
   status: { type: String},
   repeat: { type: Boolean, default: false },
   repeatFrequency: { type: String, enum: ['daily', 'weekly', 'monthly'], required: function() { return this.repeat; } },
   repeatDaysOfWeek: [{ type: String, enum: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] }],
-
   // For monthly repeat: array of dates (1-31)
   repeatDatesOfMonth: [{ type: Number, min: 1, max: 31 }],
 

@@ -1,4 +1,4 @@
-const Role = require('../models/Role');
+const Designation = require('../models/Designation');
 const Department = require('../models/Department');
 const Employee = require('../models/Employee');
 
@@ -12,13 +12,13 @@ async function getCompanyIdFromUser (user) {
   }
 }
 
-exports.createRole = async (req, res) => {
+exports.createDesignation = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser (req.user);
     const { name, description, department, permissions } = req.body;
 
     if (!name || !department) {
-      return res.status(400).json({ message: 'Role name and department are required' });
+      return res.status(400).json({ message: 'Designation name and department are required' });
     }
 
     // Validate department belongs to company
@@ -28,52 +28,52 @@ exports.createRole = async (req, res) => {
     }
 
     // Create role
-    const role = new Role({
+    const designation = new Designation({
       name,
       company,
       department,
     });
 
-    await role.save();
+    await designation.save();
 
-    res.status(201).json({ message: 'Role created successfully', role });
+    res.status(201).json({ message: 'Designation created successfully', designation });
   } catch (error) {
-    console.error('Create role error:', error);
+    console.error('Create designation error:', error);
     if (error.code === 11000) {
-      return res.status(400).json({ message: 'Role with this name already exists in the department' });
+      return res.status(400).json({ message: 'Designation with this name already exists in the department' });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-exports.getRoles = async (req, res) => {
+exports.getDesignations = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser (req.user);
     const filters = { company };
 
     if (req.query.department) filters.department = req.query.department;
 
-    const roles = await Role.find(filters)
+    const designations = await Designation.find(filters)
       .populate('department', 'name')
       .sort({ name: 1 });
 
-    res.json({ roles });
+    res.json({ designations });
   } catch (error) {
-    console.error('Get roles error:', error);
+    console.error('Get designations error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-exports.getRoleById = async (req, res) => {
+exports.getDesignationById = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser (req.user);
     const { id } = req.params;
 
-    const role = await Role.findOne({ _id: id, company })
+    const role = await Designation.findOne({ _id: id, company })
       .populate('department', 'name');
 
     if (!role) {
-      return res.status(404).json({ message: 'Role not found' });
+      return res.status(404).json({ message: 'Designation not found' });
     }
 
     res.json({ role });
@@ -83,7 +83,7 @@ exports.getRoleById = async (req, res) => {
   }
 };
 
-exports.updateRole = async (req, res) => {
+exports.updateDesignation = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser (req.user);
     const { id } = req.params;
@@ -97,37 +97,37 @@ exports.updateRole = async (req, res) => {
       }
     }
 
-    const role = await Role.findOneAndUpdate(
+    const role = await Designation.findOneAndUpdate(
       { _id: id, company },
       updateData,
       { new: true, runValidators: true }
     );
 
     if (!role) {
-      return res.status(404).json({ message: 'Role not found or not authorized' });
+      return res.status(404).json({ message: 'Designation not found or not authorized' });
     }
 
-    res.json({ message: 'Role updated successfully', role });
+    res.json({ message: 'Designation updated successfully', role });
   } catch (error) {
     console.error('Update role error:', error);
     if (error.code === 11000) {
-      return res.status(400).json({ message: 'Role with this name already exists in the department' });
+      return res.status(400).json({ message: 'Designation with this name already exists in the department' });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-exports.deleteRole = async (req, res) => {
+exports.deleteDesignation = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser (req.user);
     const { id } = req.params;
 
-    const role = await Role.findOneAndDelete({ _id: id, company });
+    const role = await Designation.findOneAndDelete({ _id: id, company });
     if (!role) {
-      return res.status(404).json({ message: 'Role not found or not authorized' });
+      return res.status(404).json({ message: 'Designation not found or not authorized' });
     }
 
-    res.json({ message: 'Role deleted successfully' });
+    res.json({ message: 'Designation deleted successfully' });
   } catch (error) {
     console.error('Delete role error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
