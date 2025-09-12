@@ -3,8 +3,7 @@ const mongoose = require('mongoose');
 const designationSchema = new mongoose.Schema({
   name: { type: String, required: true }, // e.g., "Manager", "Developer", "HR"
   company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
-  department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true },
-
+  department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true }, 
 }, { timestamps: true });
 
 // Optional: unique designation name per company + department

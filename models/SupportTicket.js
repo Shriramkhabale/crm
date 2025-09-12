@@ -16,6 +16,9 @@ const SupportTicketSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        image: [{
+            type: String,
+        }],
         status: {
             type: String,
             enum: ["open", "in_progress", "closed"],
@@ -25,10 +28,6 @@ const SupportTicketSchema = new mongoose.Schema(
             type: String,
             enum: ["low", "medium", "high"],
             default: "medium",
-        },
-        createdBy: {
-            type: String, 
-            required: true,
         },
     },
     { timestamps: true }
