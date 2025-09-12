@@ -23,10 +23,94 @@ const employeeSchema = new mongoose.Schema({
     enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   }],                                                   // Weekly Holiday
   address: { type: String },                           // Leave-Type
-  accessPermissions: {                                  // User Access (pages/modules user can handle)
-    type: [String],
-    default: [],
-  },
+  accessPermissions: {
+  type: [String],
+  default: [],
+  enum: [
+    'dashboard',
+    'leads_dashboard',
+    'leads_leads',
+    'leads_customer',
+    'leads_product',
+    'lead_report',
+    'leads_workflow',
+
+    'list_task',
+    'create_task',
+    'update_task',
+    'delete_task',
+
+    'settings',
+    'settings_category',
+    'settings_shift',
+    'settings_leads_status',
+    'settings_customer_group',
+    'settings_leave_type',
+   
+    'reports',
+    'followup_report',
+    'task_report',
+    'leads_report',
+    'attendance_report',
+    'leave_report',
+    'payment_report',
+
+    'accounts',
+
+    'list_customer',
+    'create_customer',
+    'update_customer',
+    'delete_customer',
+
+    'list_teammember',
+    'create_teammember',
+    'update_teammember',
+    'delete_teammember',
+
+    'attendance',
+
+    'list_leave',
+    'create_leave',
+    'update_leave',
+    'delete_leave',
+
+
+    'list_franchise',
+    'create_franchise',
+    'update_franchise',
+    'delete_franchise',
+
+    'list_business',
+    'create_business',
+    'update_business',
+    'delete_business',
+
+    'chat',
+
+    'list_department',
+    'create_department',
+    'update_department',
+    'delete_department',
+
+    'salary_generation',
+    
+    'todo_list',
+
+    'user_profile',
+
+    'business_profile',
+
+    'list_project_manager',
+    'create_project_manager',
+    'update_project_manager',
+    'delete_project_manager',
+
+    'customer_support_customer_side',
+    'customer_support_support_side',
+    'customer_support_company_side',
+  ],
+},
+
   adharImage: { type: String },                         // Adhar Image URL or path
   panImage: { type: String },                           // Pan Image URL or path
   profileImage: { type: String }, 
