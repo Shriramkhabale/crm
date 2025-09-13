@@ -35,9 +35,8 @@ exports.updateTaskStatus = async (req, res) => {
 
     // Update task status and nextFollowUpDateTime
     task.status = status;
-    if (followUpDate) {
-      task.nextFollowUpDateTime = followUpDate;
-    }
+     task.nextFollowUpDateTime = nextFollowUpDateTime;
+  
     await task.save();
 
     // Save status update history
