@@ -27,6 +27,8 @@ const shifts = require('./routes/shiftRoutes');
 const TicketProgress = require('./routes/ticketProgressRoutes');
 const TicketReview = require('./routes/ticketReviewRoutes');
 const supportEngineerHistoryRoutes = require("./routes/supportEngineerHistoryRoutes");
+const requestRoutes = require('./routes/requestRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -77,6 +79,9 @@ app.use('/api/support-ticket', supportRoutes);
 app.use('/api/ticket-progress', TicketProgress);
 app.use('/api/ticket-review',TicketReview)
 app.use("/api/support-engineer-history", supportEngineerHistoryRoutes);
+app.use('/api/requests', requestRoutes);
+
+app.use('/api/chat', chatRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
