@@ -16,7 +16,6 @@ const taskSchema = new mongoose.Schema({
   repeatDatesOfMonth: [{ type: Number, min: 1, max: 31 }],
 
   priority: { type: String, default: 'medium' },
-
   // If repeat is false, nextFollowUpDateTime is used
   nextFollowUpDateTime: { type: Date, required: function() { return !this.repeat; } },
 

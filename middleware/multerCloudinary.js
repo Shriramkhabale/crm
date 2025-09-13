@@ -5,12 +5,14 @@ const cloudinary = require('../config/cloudinaryConfig');
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'employee_images', // folder in Cloudinary
+    folder: 'employee_images',
     allowed_formats: ['jpg', 'jpeg', 'png'],
-    transformation: [{ width: 500, height: 500, crop: 'limit' }],
   },
 });
 
-const parser = multer({ storage: storage });
+const parser = multer({
+  storage: storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB size limit
+});
 
 module.exports = parser;

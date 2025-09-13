@@ -3,32 +3,48 @@ const mongoose = require("mongoose");
 
 const SupportTicketSchema = new mongoose.Schema(
     {
-        customerId: {
-            type: String, 
-            required: true,
+        customerId: { //for manager/support and customer side field. automatically detect and pass.
+            type: String
         },
-        subject: {
-            type: String,
-            required: true,
-            trim: true,
+
+        companyId: {  // pass automatically
+            type: String
         },
-        description: {
-            type: String,
-            required: true,
+
+        assignedTo:{ //field for manager/ support engineer to fill
+            type: String
         },
-        image: [{
-            type: String,
+        fieldWorkAssigned: {  //field for manager/ support engineer to fill
+            type: Boolean,
+            default: false,
+        },
+        subject: {  //for manager/support and customer side field.
+            type: String
+        },
+        description: {  //for manager/support and customer side field.
+            type: String
+        },
+        image: [{  
+            type: String
         }],
-        status: {
+        status: { //field for manager/support engineer to fill
             type: String,
             default: "open",
         },
-        priority: {
+        priority: { //field for manager/support engineer to fill
             type: String,
             default: "medium",
         },
+        customerName:{  //field for manager/support engineer to fill (optional)
+             type: String
+        },
+        customerMobile:{ //field for manager/support engineer to fill (optional)
+             type: String
+        }
     },
     { timestamps: true }
 );
+// manager will ask for comany name(select from dropdown comany name), select department from dropdown , select employee name from dropdown , 
+// and from that employe automatically fetch employee id as customer id  and store it.
 
 module.exports = mongoose.model("SupportTicket", SupportTicketSchema);

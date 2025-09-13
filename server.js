@@ -24,6 +24,9 @@ const productRoutes = require('./routes/productRoutes');
 const taskStatusUpdateRoutes = require('./routes/taskStatusUpdateRoutes');
 const supportRoutes = require('./routes/supportRoutes');
 const shifts = require('./routes/shiftRoutes');
+const TicketProgress = require('./routes/ticketProgressRoutes');
+const TicketReview = require('./routes/ticketReviewRoutes');
+const supportEngineerHistoryRoutes = require("./routes/supportEngineerHistoryRoutes");
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -35,7 +38,7 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 app.use(cors({
-  origin: 'http://localhost:3000', // frontend URL
+  origin: 'http://localhost:3000',
   credentials: true, 
 }));
 
@@ -68,8 +71,12 @@ app.use('/api/custgrouptypes', customerGrpTypeRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/taskstatusupdate', taskStatusUpdateRoutes);
-app.use('/api/support-ticket', supportRoutes);
 app.use('/api/shifts', shifts);
+
+app.use('/api/support-ticket', supportRoutes);
+app.use('/api/ticket-progress', TicketProgress);
+app.use('/api/ticket-review',TicketReview)
+app.use("/api/support-engineer-history", supportEngineerHistoryRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
