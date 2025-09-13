@@ -6,7 +6,7 @@ const TaskStatusUpdate = require('../models/TaskStatusUpdate');
 exports.updateTaskStatus = async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { status, description, image, file, audio, nextFollowUp, nextFollowUpDateTime } = req.body;
+    const { status, description, image, file, audio, nextFollowUpDateTime } = req.body;
 
     if (!status) {
       return res.status(400).json({ message: 'Status is required' });
@@ -17,7 +17,7 @@ exports.updateTaskStatus = async (req, res) => {
     let followUpDate = null;
     if (statusesWithFollowUp.includes(status.toLowerCase())) {
       // Prefer nextFollowUpDateTime if provided, else nextFollowUp
-      const nextFollowUpValue = nextFollowUpDateTime || nextFollowUp;
+      const nextFollowUpValue = nextFollowUpDateTime ;
       if (!nextFollowUpValue) {
         return res.status(400).json({ message: 'Next Follow Up date/time is required for this status' });
       }
@@ -48,7 +48,7 @@ exports.updateTaskStatus = async (req, res) => {
       image,
       file,
       audio,
-      nextFollowUp: followUpDate || undefined
+      nextFollowUpDateTime: followUpDate || undefined
     });
 
     await statusUpdate.save();

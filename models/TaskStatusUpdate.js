@@ -9,7 +9,7 @@ const taskStatusUpdateSchema = new mongoose.Schema({
   image: { type: String }, 
   file: { type: String }, 
   audio: { type: String },
-  nextFollowUp: { type: Date }, 
+  nextFollowUpDateTime: { type: Date }, 
   updatedAt: { type: Date, default: Date.now },
   shiftedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }, // who reassigned
   oldAssigneeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
