@@ -1,4 +1,4 @@
-//uplodimages.js
+//middleware/uplodimages.js
 const multer = require('multer');
 // Use memory storage, since we'll upload to Cloudinary from memory buffer
 const storage = multer.memoryStorage();

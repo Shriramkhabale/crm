@@ -33,8 +33,9 @@ const branchRoutes = require('./routes/branchRoutes');
 const subscriptionPlanRoutes = require('./routes/subscriptionPlanRoutes');
 const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const payrollRoutes = require('./routes/payrollRoutes');
-
+const companyDashboardRoutes = require('./routes/companyDashboardRoutes')
 const authMiddleware = require('./middleware/authMiddleware');
+
 
 const cors = require('cors');
 
@@ -106,6 +107,9 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
 app.use('/api/leave-types', leaveTypeRoutes);
 app.use('/api/payroll', payrollRoutes);
+app.use('/api/comapany-dashboard', companyDashboardRoutes);
+
+
 
 // Start the server
 const PORT = process.env.PORT || 5000;

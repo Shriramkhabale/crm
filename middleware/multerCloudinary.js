@@ -19,7 +19,7 @@
 // module.exports = parser;
 
 
-
+//middleware/multerCloudinary.js
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinaryConfig');
