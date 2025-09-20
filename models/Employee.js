@@ -37,6 +37,7 @@ const employeeSchema = new mongoose.Schema({
 
     'list_task',
     'create_task',
+    'create_own_task',
     'update_task',
     'delete_task',
     'shifted_task_history',
@@ -114,8 +115,8 @@ const employeeSchema = new mongoose.Schema({
   ],
 },
 
-  adharImage: { type: String },                         // Adhar Image URL or path
-  panImage: { type: String },                           // Pan Image URL or path
+  adharImage: { type: String },                       
+  panImage: { type: String },                           
   profileImage: { type: String }, 
   qrCode: { type: String }, 
 }, { timestamps: true });

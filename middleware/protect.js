@@ -26,7 +26,7 @@
 
 // module.exports = protect;
 
-
+// //protect.js
 const jwt = require('jsonwebtoken');
 
 const protect = (req, res, next) => {

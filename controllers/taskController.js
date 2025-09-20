@@ -109,6 +109,8 @@ if (assignee.length !== assignedToArray.length) {
         return res.status(400).json({ message: 'nextFollowUpDateTime is required when repeat is false' });
       }
     }
+
+    
   // Extract uploaded file URLs from req.files
     const images = req.files['images'] ? req.files['images'].map(file => file.path) : [];
     const audios = req.files['audios'] ? req.files['audios'].map(file => file.path) : [];
@@ -206,6 +208,7 @@ exports.updateTask = async (req, res) => {
     const { id } = req.params;
     const company = await getCompanyIdFromUser (req.user);
     const updateData = req.body;
+console.log("updateData",updateData);
 
     // Validate repeat fields if updated
     if (updateData.repeat) {
@@ -290,6 +293,8 @@ exports.updateTask = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    console.log("updateData----",updateData);
+    
     if (!task) {
       return res.status(404).json({ message: 'Task not found or not authorized' });
     }

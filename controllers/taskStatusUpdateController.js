@@ -121,8 +121,6 @@ exports.getShiftedTasks = async (req, res) => {
       .populate('oldAssigneeId', 'name email') // populate oldAssignee info
       .populate('task'); // populate task details
 
-    // Optionally, you can return only unique tasks with latest shift info:
-    // But here we return all matching status updates with task info
 
     res.json({ shiftedTasks: shiftedStatusUpdates });
   } catch (error) {
@@ -319,6 +317,9 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
       nextFollowUpDateTime
     } = req.body;
 
+
+    console.log("req.body222",req.body);
+    
     if (!status) {
       return res.status(400).json({ message: 'Status is required' });
     }
@@ -345,12 +346,16 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
     // Update task status and nextFollowUpDateTime
     task.status = status;
     task.nextFollowUpDateTime = nextFollowUpDateTime;
+    console.log("task---0--0-0-000-",task);
+    
     await task.save();
 
     // Extract uploaded file URLs
     const image = req.files && req.files.image ? req.files.image[0].path : undefined;
     const file = req.files && req.files.file ? req.files.file[0].path : undefined;
     const audio = req.files && req.files.audio ? req.files.audio[0].path : undefined;
+
+console.log("followUpDate",nextFollowUpDateTime);
 
     // Save status update history
     const statusUpdate = new TaskStatusUpdate({
@@ -361,7 +366,7 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
       image,
       file,
       audio,
-      nextFollowUpDateTime: followUpDate || undefined
+      nextFollowUpDateTime: nextFollowUpDateTime || undefined
     });
 
     await statusUpdate.save();
