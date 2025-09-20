@@ -37,11 +37,11 @@ const employeeSchema = new mongoose.Schema({
 
     'list_task',
     'create_task',
-    'create_own_task',
     'update_task',
     'delete_task',
     'shifted_task_history',
     'shift_task',
+    'create_credit_points',
     'credit_points',
 
     'settings',
