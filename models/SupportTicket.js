@@ -19,6 +19,15 @@ const SupportTicketSchema = new mongoose.Schema(
         subject: {  //for manager/support and customer side field.
             type: String
         },
+        material: {  //for manager/support and customer side field.  added by Rehan 
+            type: String
+        },
+        service: {  //for manager/support and customer side field.  added by Rehan 
+            type: String
+        },
+         delayReason: {  //for manager/support and customer side field.  added by Rehan 
+            type: String
+        },
         location: {  //for manager/support and customer side field.
             type: String
         },

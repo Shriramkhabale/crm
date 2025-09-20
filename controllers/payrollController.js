@@ -2,43 +2,7 @@
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const Holiday = require('../models/Holiday'); // import Holiday model
-
-const mongoose = require('mongoose');
-
-// Payroll schema (new)
-const payrollSchema = new mongoose.Schema({
-  company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
-  employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
-
-  salary: { type: Number, required: true }, // base salary
-  weeklyHoliday: [{ type: String, enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] }],
-
-  totalWorkingDays: { type: Number, default: 0 },
-  totalHalfDays: { type: Number, default: 0 },
-  totalLeaves: { type: Number, default: 0 },
-
-  deductions: {
-    tax: { type: Number, default: 0 },
-    providentFund: { type: Number, default: 0 },
-    other: { type: Number, default: 0 },
-  },
-
-  incomes: {
-    bonus: { type: Number, default: 0 },
-    incentives: { type: Number, default: 0 },
-    other: { type: Number, default: 0 },
-  },
-
-  totalDeductions: { type: Number, default: 0 },
-  totalIncomes: { type: Number, default: 0 },
-  netSalary: { type: Number, default: 0 },
-
-  payrollMonth: { type: String, required: true }, // e.g. '2024-06'
-
-}, { timestamps: true });
-
-const Payroll = mongoose.model('Payroll', payrollSchema);
-
+const Payroll = require('../models/Payroll');
 
 // Controller function to generate payroll for an employee for a given month
 exports.generatePayroll = async (req, res) => {
@@ -79,7 +43,6 @@ exports.generatePayroll = async (req, res) => {
     const baseSalary = parseFloat(employee.salary) || 0;
 
     // Calculate deductions and incomes (you can customize or get from req.body)
-    // For example, here we take from req.body or default 0
     const {
       deductions = {},
       incomes = {}
@@ -152,25 +115,6 @@ exports.generatePayroll = async (req, res) => {
 };
 
 
-// Get payroll by employee and month
-// exports.getPayrollByEmployeeAndMonth = async (req, res) => {
-//   try {
-//     const { employeeId, payrollMonth } = req.params;
-//     if (!employeeId || !payrollMonth) {
-//       return res.status(400).json({ message: 'employeeId and payrollMonth are required' });
-//     }
-
-//     const payroll = await Payroll.findOne({ employee: employeeId, payrollMonth });
-//     if (!payroll) return res.status(404).json({ message: 'Payroll not found' });
-
-//     res.json(payroll);
-//   } catch (error) {
-//     res.status(500).json({ message: 'Server error', error: error.message || error });
-//   }
-// };
-
-
-// Get payroll(s) by employee and year-month (e.g. 2024 and 6)
 exports.getPayrollByEmployeeAndMonth = async (req, res) => {
   try {
     const { employeeId, year, month } = req.params;
