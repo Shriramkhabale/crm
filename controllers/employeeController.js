@@ -1,7 +1,8 @@
+// controllers/employeeController.js
 const Employee = require('../models/Employee');
 const bcrypt = require('bcryptjs');
 
-// controllers/employeeController.js
+
 exports.createEmployee = async (req, res) => {
   try {
     const {
@@ -29,7 +30,7 @@ exports.createEmployee = async (req, res) => {
     const existing = await Employee.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
 
-    // Extract uploaded files URLs
+   // Extract uploaded file URLs
     const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : undefined;
     const panImage = req.files?.panImage ? req.files.panImage[0].path : undefined;
     const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : undefined;

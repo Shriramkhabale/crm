@@ -111,10 +111,10 @@ if (assignee.length !== assignedToArray.length) {
     }
 
     
-  // Extract uploaded file URLs from req.files
-    const images = req.files['images'] ? req.files['images'].map(file => file.path) : [];
-    const audios = req.files['audios'] ? req.files['audios'].map(file => file.path) : [];
-    const files = req.files['files'] ? req.files['files'].map(file => file.path) : [];
+    // Extract uploaded file URLs arrays
+    const images = req.files?.images ? req.files.images.map(f => f.path) : [];
+    const audios = req.files?.audios ? req.files.audios.map(f => f.path) : [];
+    const files = req.files?.files ? req.files.files.map(f => f.path) : [];
 
     // Create task document
     const task = new Task({
@@ -235,20 +235,7 @@ console.log("updateData",updateData);
           }
         }
 
-//         http://localhost:5000/api/task/68ccdea7f1bc215434418627/shifttask
 
-//         {
-//  "newAssigneeId": "68ccffbaff9a30d5b5910c7c",
-//   "description":"gsdgydsfhgfds sd  yudf ygugtry"
-// }
-
-
-// {
-//    "task":"68cd0683ff9a30d5b5911118",
-//   "status": "in-progress",
-//   "description":"ghsgs",
-//   "nextFollowUp": "2025-02-02"
-// }
 
       }
       if (!updateData.nextFinishDateTime) {

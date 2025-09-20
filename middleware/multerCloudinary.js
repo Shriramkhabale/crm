@@ -1,18 +1,54 @@
+//middleware/multerCloudinary.js
+// const multer = require('multer');
+// const { CloudinaryStorage } = require('multer-storage-cloudinary');
+// const cloudinary = require('../config/cloudinaryConfig');
+
+// const storage = new CloudinaryStorage({
+//   cloudinary: cloudinary,
+//   params: {
+//     folder: 'employee_images',
+//     allowed_formats: ['jpg', 'jpeg', 'png', 'mp3', 'pdf', 'docx'], // add allowed formats
+//   },
+// });
+
+// const parser = multer({
+//   storage: storage,
+//   limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB size limit
+// });
+
+// module.exports = parser;
+
+
+
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinaryConfig');
 
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'employee_images',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'mp3', 'pdf', 'docx'], // add allowed formats
+  cloudinary,
+  params: (req, file) => {
+    // Store all images in one folder, all audios in one folder, all files in one folder
+    let folder = 'general_files';
+
+    if (file.mimetype.startsWith('image/')) {
+      folder = 'all_images';
+    } else if (file.mimetype.startsWith('audio/')) {
+      folder = 'all_audios';
+    } else {
+      folder = 'all_files';
+    }
+
+    return {
+      folder,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'mp3', 'wav', 'pdf', 'docx'],
+      resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
+    };
   },
 });
 
-const parser = multer({
-  storage: storage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB size limit
+const upload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 5 MB max per file
 });
 
-module.exports = parser;
+module.exports = upload;

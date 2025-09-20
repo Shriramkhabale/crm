@@ -12,9 +12,9 @@ router.post(
   '/tasks',
   authMiddleware,
   upload.fields([
-    { name: 'images', maxCount: 5 },
-    { name: 'audios', maxCount: 5 },
-    { name: 'files', maxCount: 5 },
+    { name: 'images', maxCount: 15 },
+    { name: 'audios', maxCount: 15 },
+    { name: 'files', maxCount: 15 },
   ]),
   taskController.createTask
 );
@@ -28,9 +28,9 @@ router.put(
   '/tasks/:id',
   authMiddleware,
   upload.fields([
-    { name: 'images', maxCount: 5 },
-    { name: 'audios', maxCount: 5 },
-    { name: 'files', maxCount: 5 },
+    { name: 'images', maxCount: 15 },
+    { name: 'audios', maxCount: 15 },
+    { name: 'files', maxCount: 15 },
   ]),
   taskController.updateTask
 );
