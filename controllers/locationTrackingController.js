@@ -49,7 +49,6 @@ console.log("--------------------------------------");
       };
     });
 
-    // Sort and deduplicate by timestamp
     validLocations.sort((a, b) => a.timestamp - b.timestamp);
     for (let i = 1; i < validLocations.length; i++) {
       if (Math.abs(validLocations[i].timestamp - validLocations[i - 1].timestamp) < 60000) {
