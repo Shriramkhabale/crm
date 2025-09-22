@@ -15,7 +15,7 @@ console.log("--------------------------------------");
   try {
     const { locations, taskId, notes } = req.body;  // No routeId
     const employeeId = req.user.userId;
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId  || req.user.userId;
 
 
     // Validation
@@ -143,9 +143,11 @@ console.log("--------------------------------------");
  * Get location history - Filter by taskId or employeeId
  */
 const getLocationHistory = async (req, res) => {
+  console.log("req.user",req.user);
+  
   try {
     const { taskId, employeeId, startDate, endDate } = req.query;
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId ||  req.user.userId;
 
     const filters = { company: companyId };
     if (taskId) filters.taskId = new mongoose.Types.ObjectId(taskId);
@@ -172,7 +174,7 @@ const getLocationHistory = async (req, res) => {
 const getLastLocation = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId || req.user.userId;
 
     const latestBatch = await LocationTracking.findOne({
       employee: new mongoose.Types.ObjectId(employeeId),
