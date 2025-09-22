@@ -9,10 +9,14 @@ const mongoose = require('mongoose');
  * Identification: taskId + employeeId + companyId
  */
 const createLocationBatch = async (req, res) => {
+console.log("req.user",req.user);
+console.log("--------------------------------------");
+
   try {
     const { locations, taskId, notes } = req.body;  // No routeId
     const employeeId = req.user.userId;
     const companyId = req.user.companyId;
+
 
     // Validation
     if (!Array.isArray(locations) || locations.length === 0) {
@@ -24,10 +28,10 @@ const createLocationBatch = async (req, res) => {
     }
 
     // Validate employee
-    // const employee = await Employee.findOne({ _id: employeeId, company: companyId });
-    // if (!employee) {
-    //   return res.status(403).json({ message: 'Employee not authorized for this company' });
-    // }
+    const employee = await Employee.findOne({ _id: employeeId, company: companyId });
+    if (!employee) {
+      return res.status(403).json({ message: 'Employee not authorized for this company' });
+    }
 
     // Validate and prepare locations
     const validLocations = locations.map(point => {
