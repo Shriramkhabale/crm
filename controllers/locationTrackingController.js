@@ -1,3 +1,5 @@
+//controllers/locationTrackingController.js
+
 const LocationTracking = require('../models/LocationTracking');
 const Employee = require('../models/Employee');
 const mongoose = require('mongoose');
@@ -6,7 +8,7 @@ const mongoose = require('mongoose');
  * Create/Save a batch of location data - Appends to existing task document if found
  * Identification: taskId + employeeId + companyId
  */
-exports.createLocationBatch = async (req, res) => {
+const createLocationBatch = async (req, res) => {
   try {
     const { locations, taskId, notes } = req.body;  // No routeId
     const employeeId = req.user.userId;
@@ -46,7 +48,7 @@ exports.createLocationBatch = async (req, res) => {
     // Sort and deduplicate by timestamp
     validLocations.sort((a, b) => a.timestamp - b.timestamp);
     for (let i = 1; i < validLocations.length; i++) {
-      if (Math.abs(validLocations[i].timestamp - validLocations[i-1].timestamp) < 60000) {
+      if (Math.abs(validLocations[i].timestamp - validLocations[i - 1].timestamp) < 60000) {
         console.warn('Duplicate timestamp; skipping point');
         validLocations.splice(i, 1);
         i--;
@@ -85,7 +87,7 @@ exports.createLocationBatch = async (req, res) => {
       batch.totalPoints = batch.locations.length;
       if (taskId) batch.taskId = taskObjectId;  // Ensure taskId is set
       if (notes) batch.notes = notes;  // Update notes
-      batch.status = notes?.includes('completed') ? 'completed' : batch.status;  // Auto-update status if notes indicate end
+      batch.status = notes && notes.includes('completed') ? 'completed' : batch.status;  // Auto-update status
       batch.updatedAt = new Date();
       
       await batch.save();
@@ -136,7 +138,7 @@ exports.createLocationBatch = async (req, res) => {
 /**
  * Get location history - Filter by taskId or employeeId
  */
-exports.getLocationHistory = async (req, res) => {
+const getLocationHistory = async (req, res) => {
   try {
     const { taskId, employeeId, startDate, endDate } = req.query;
     const companyId = req.user.companyId;
@@ -163,7 +165,7 @@ exports.getLocationHistory = async (req, res) => {
 /**
  * Get last location for employee (across all tasks)
  */
-exports.getLastLocation = async (req, res) => {
+const getLastLocation = async (req, res) => {
   try {
     const { employeeId } = req.params;
     const companyId = req.user.companyId;
@@ -196,3 +198,13 @@ exports.getLastLocation = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+
+// EXPLICIT EXPORTS - This ensures the object is complete and reliable
+module.exports = {
+  createLocationBatch,
+  getLocationHistory,
+  getLastLocation
+};
+
+

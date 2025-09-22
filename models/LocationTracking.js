@@ -1,3 +1,4 @@
+//models/LocationTracking.js
 const mongoose = require('mongoose');
 
 const locationPointSchema = new mongoose.Schema({

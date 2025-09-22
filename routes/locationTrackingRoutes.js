@@ -1,19 +1,22 @@
+//routes/locationTrackingRoutes.js
+
 const express = require('express');
 const router = express.Router();
-const locationController = require('../controllers/locationTrackingController');
-const authMiddleware = require('../middleware/authMiddleware');  // Your auth middleware
-const authorizeRole = require('../middleware/authorizeRole');   // Optional: For admin-only routes
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Protect all routes with auth
-router.use(authMiddleware);
+const {
+  createLocationBatch,
+  getLocationHistory,
+  getLastLocation
+} = require('../controllers/locationTrackingController');
 
-// Save batch of locations (for field engineers)
-router.post('/track-batch', locationController.createLocationBatch);
+// POST /api/location/track-batch - Any authenticated employee
+router.post('/track-batch', authMiddleware, createLocationBatch);
 
-// Get location history (for company admins)
-router.get('/history', authorizeRole('admin', 'company'), locationController.getLocationHistory);
+// GET /api/location/history - Any authenticated user in company
+router.get('/history', authMiddleware, getLocationHistory);
 
-// Get last location (for quick checks)
-router.get('/last/:employeeId', authorizeRole('admin', 'company'), locationController.getLastLocation);
+// GET /api/location/last/:employeeId - Any authenticated user in company
+router.get('/last/:employeeId', authMiddleware, getLastLocation);
 
 module.exports = router;
