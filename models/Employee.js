@@ -109,9 +109,10 @@ const employeeSchema = new mongoose.Schema({
     'update_project_manager',
     'delete_project_manager',
 
-    'customer_su.pport_customer_side',
-    'customer_support_support_side',
-    'customer_support_company_side',
+   'customer_support', 
+   'com_tickets', 
+   'sup_tickets', 
+   'employee_performance'
   ],
 },
 
