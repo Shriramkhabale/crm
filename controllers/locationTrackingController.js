@@ -24,10 +24,10 @@ const createLocationBatch = async (req, res) => {
     }
 
     // Validate employee
-    const employee = await Employee.findOne({ _id: employeeId, company: companyId });
-    if (!employee) {
-      return res.status(403).json({ message: 'Employee not authorized for this company' });
-    }
+    // const employee = await Employee.findOne({ _id: employeeId, company: companyId });
+    // if (!employee) {
+    //   return res.status(403).json({ message: 'Employee not authorized for this company' });
+    // }
 
     // Validate and prepare locations
     const validLocations = locations.map(point => {
