@@ -1,14 +1,13 @@
 const mongoose = require('mongoose');
 
 const locationPointSchema = new mongoose.Schema({
-  latitude: { type: Number, required: true },  // GPS latitude
-  longitude: { type: Number, required: true }, // GPS longitude
-  timestamp: { type: Date, required: true },   // When the point was captured
-  speed: { type: Number },                     // Optional: Speed in km/h (from GPS)
-  accuracy: { type: Number },                  // Optional: GPS accuracy in meters
-  batteryLevel: { type: Number },              // Optional: Device battery % at capture
-  // Optional: Reference to a task or route if linked to field work
-  taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' }
+  latitude: { type: Number, required: true },
+  longitude: { type: Number, required: true },
+  timestamp: { type: Date, required: true },
+  speed: { type: Number },
+  accuracy: { type: Number },
+  batteryLevel: { type: Number },
+  taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' }  // Per-point task (optional)
 });
 
 const locationTrackingSchema = new mongoose.Schema({
@@ -16,30 +15,35 @@ const locationTrackingSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Employee', 
     required: true 
-  },  // Who is being tracked (support engineer)
+  },
   company: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Company', 
     required: true 
-  },  // Company reference
-  routeId: { type: String, required: true },   // Unique ID for the route/session (e.g., "route-2024-01-15-001")
-  locations: [locationPointSchema],            // Array of location points (batch)
-  startTime: { type: Date, required: true },   // When the route/batch started
-  endTime: { type: Date, required: true },     // When the batch was submitted
-  totalPoints: { type: Number, required: true }, // Number of location points in this batch
+  },
+  taskId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Task',
+    required: false  // Optional; if omitted, it's general employee tracking
+  },
+  locations: [locationPointSchema],  // Array grows with appends
+  startTime: { type: Date, required: true },  // Task/route start
+  endTime: { type: Date, required: true },    // Updated on each append
+  totalPoints: { type: Number, required: true },  // Cumulative
   status: { 
     type: String, 
     enum: ['active', 'completed', 'paused'], 
     default: 'active' 
-  },  // Route status
-  notes: { type: String },                     // Optional: Any notes from the engineer
+  },
+  notes: { type: String },  // Updated on appends
 }, { 
-  timestamps: true  // Adds createdAt/updatedAt
+  timestamps: true 
 });
 
-// Index for efficient querying by employee/company/route
-locationTrackingSchema.index({ employee: 1, company: 1 });
-locationTrackingSchema.index({ routeId: 1 });
+// Indexes for efficient querying (now by taskId + employee + company)
+locationTrackingSchema.index({ employee: 1, company: 1, taskId: 1 });  // Unique combo for appending
+locationTrackingSchema.index({ taskId: 1 });
+locationTrackingSchema.index({ employee: 1 });
 locationTrackingSchema.index({ startTime: -1 });
 
 module.exports = mongoose.model('LocationTracking', locationTrackingSchema);
