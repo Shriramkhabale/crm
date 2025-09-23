@@ -37,6 +37,11 @@ const SupportTicketSchema = new mongoose.Schema(
         image: [{  
             type: String
         }],
+        isSigned:{type: Boolean},
+        
+        signImage: {  
+            type: String
+        },
         status: { //field for manager/support engineer to fill
             type: String,
             default: "open",

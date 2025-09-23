@@ -35,6 +35,7 @@ const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const payrollRoutes = require('./routes/payrollRoutes');
 const companyDashboardRoutes = require('./routes/companyDashboardRoutes')
 const locationRoutes = require('./routes/locationTrackingRoutes');
+const ticketOptionsRoutes = require('./routes/ticketOptionsRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -112,6 +113,7 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/comapany-dashboard', companyDashboardRoutes);
 
 app.use('/api/location', locationRoutes);
+app.use('/api/ticket-options', ticketOptionsRoutes);
 
 
 // Start the server
