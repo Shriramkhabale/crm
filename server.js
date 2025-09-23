@@ -36,6 +36,7 @@ const payrollRoutes = require('./routes/payrollRoutes');
 const companyDashboardRoutes = require('./routes/companyDashboardRoutes')
 const locationRoutes = require('./routes/locationTrackingRoutes');
 const ticketOptionsRoutes = require('./routes/ticketOptionsRoutes');
+  const superadminDashboardRoutes = require('./routes/superadminDashboardRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -114,6 +115,9 @@ app.use('/api/comapany-dashboard', companyDashboardRoutes);
 
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);
+
+
+  app.use('/api/sadashboard', superadminDashboardRoutes);
 
 
 // Start the server
