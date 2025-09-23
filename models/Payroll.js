@@ -16,7 +16,6 @@ const payrollSchema = new mongoose.Schema({
     tax: { type: Number, default: 0 },
     providentFund: { type: Number, default: 0 },
     other: { type: Number, default: 0 },
-    // Removed: leaveDeduction (auto-calculated, not stored)
   },
 
   incomes: {
