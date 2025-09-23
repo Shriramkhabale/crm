@@ -1,137 +1,149 @@
-const mongoose = require('mongoose');
+const Company = require('../models/Company');  // Adjust path
 const Employee = require('../models/Employee');
-const ProjectMgnt = require('../models/ProjectMgnt');
 const Task = require('../models/Task');
 const SupportTicket = require('../models/SupportTicket');
-const Attendance = require('../models/Attendance');
+const mongoose = require('mongoose');
 
-/**
- * Get total employees count
- */
-exports.getTotalEmployees = async (req, res) => {
+// Helper: Extract companyId from req.user (from auth middleware)
+const getCompanyId = (req) => {
+  const { companyId } = req.user;  // Assume token payload has companyId
+  if (!companyId) {
+    throw new Error('Company ID not found in token');
+  }
+  return companyId;
+};
+
+// GET /api/companydashboard/employees - Fetch all employees for the company
+exports.getEmployees = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    const totalEmployees = await Employee.countDocuments({ company: companyId });
-    res.json({ totalEmployees });
+    const companyId = getCompanyId(req);
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Query employees by company (String field)
+    const employees = await Employee.find({ company: companyId })
+      .select('-password -adharImage -panImage')  // Exclude sensitive fields
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
+
+    const total = await Employee.countDocuments({ company: companyId });
+
+    res.json({
+      success: true,
+      data: employees,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit) }
+    });
   } catch (error) {
-    console.error('getTotalEmployees error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching employees:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * Get total projects count
- */
-exports.getTotalProjects = async (req, res) => {
+// GET /api/companydashboard/tasks - Fetch all tasks for company (incl. branches)
+exports.getTasks = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    const totalProjects = await ProjectMgnt.countDocuments({ company: companyId });
-    res.json({ totalProjects });
-  } catch (error) {
-    console.error('getTotalProjects error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
+    const companyId = getCompanyId(req);
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (page - 1) * limit;
 
-/**
- * Get tasks count grouped by status
- */
-
-exports.getTasksByStatus = async (req, res) => {
-  try {
-    const companyId = req.companyId;
-    let companyObjectId;
-    try {
-      companyObjectId = new mongoose.Types.ObjectId(companyId);
-    } catch (err) {
-      return res.status(400).json({ message: 'Invalid companyId format' });
+    // First, get company and its branches
+    const company = await Company.findById(companyId).populate('branches', 'businessName address businessEmail');
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Company not found' });
     }
 
-    const tasksByStatusRaw = await Task.aggregate([
-      { $match: { company: companyObjectId } },
-      { $group: { _id: "$status", count: { $sum: 1 } } }
-    ]);
-    const tasksByStatus = {};
-    tasksByStatusRaw.forEach(item => {
-      tasksByStatus[item._id] = item.count;
-    });
-    res.json({ tasksByStatus });
-  } catch (error) {
-    console.error('getTasksByStatus error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
+    const branchIds = company.branches.map(b => b._id);  // ObjectIds from populated branches
+    const allCompanyIds = [new mongoose.Types.ObjectId(companyId), ...branchIds.map(id => new mongoose.Types.ObjectId(id))];
 
+    // Query tasks by company or branch (ObjectId fields)
+    const tasks = await Task.find({
+      $or: [
+        { company: new mongoose.Types.ObjectId(companyId) },
+        { branch: { $in: branchIds } }
+      ]
+    })
+      .populate('assignedTo', 'teamMemberName email department')  // Populate assignees
+      .populate('createdBy', 'teamMemberName email')  // Populate creator
+      .populate('department', 'name')  // If Department model exists; adjust field
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
 
-/**
- * Get total support tickets count
- */
-exports.getTotalTickets = async (req, res) => {
-  try {
-    const companyId = req.companyId;
-    const totalTickets = await SupportTicket.countDocuments({ companyId: companyId });
-    res.json({ totalTickets });
-  } catch (error) {
-    console.error('getTotalTickets error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-/**
- * Get today's present employees count
- */
-exports.getTodaysPresentEmployees = async (req, res) => {
-  try {
-    const companyId = req.companyId;
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    const todaysPresentEmployees = await Attendance.countDocuments({
-      company: companyId,
-      date: { $gte: todayStart, $lt: todayEnd },
-      status: 'present'
+    const total = await Task.countDocuments({
+      $or: [
+        { company: new mongoose.Types.ObjectId(companyId) },
+        { branch: { $in: branchIds } }
+      ]
     });
 
-    res.json({ todaysPresentEmployees });
+    res.json({
+      success: true,
+      data: tasks,
+      branches: company.branches,  // Include branches info if any
+      pagination: { total, page: parseInt(page), limit: parseInt(limit) }
+    });
   } catch (error) {
-    console.error('getTodaysPresentEmployees error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * Bonus: Get tasks created per day for last 7 days
- */
-exports.getTasksLast7Days = async (req, res) => {
+// GET /api/companydashboard/support-tickets - Fetch all support tickets for company
+exports.getSupportTickets = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    const companyId = getCompanyId(req);
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (page - 1) * limit;
 
-    const tasksByDay = await Task.aggregate([
-      { $match: { 
-          company: new mongoose.Types.ObjectId(companyId),
-          createdAt: { $gte: sevenDaysAgo, $lte: today }
-        } 
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    // Query tickets by companyId (String field)
+    const tickets = await SupportTicket.find({ companyId: companyId.toString() })  // Convert to string if needed
+      .populate('assignedTo', 'teamMemberName email')  // If assignedTo is Employee ID (string)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
 
-    res.json({ tasksByDay });
+    const total = await SupportTicket.countDocuments({ companyId: companyId.toString() });
+
+    res.json({
+      success: true,
+      data: tickets,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit) }
+    });
   } catch (error) {
-    console.error('getTasksLast7Days error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching support tickets:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/companydashboard/branches - Fetch branches if main company
+exports.getBranches = async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+
+    const company = await Company.findById(companyId).populate('branches', 'businessName businessEmail address businessPhone isBranch parentCompanyId');
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Company not found' });
+    }
+
+    if (company.isBranch) {
+      return res.json({
+        success: true,
+        data: [],  // Branches don't have sub-branches
+        message: 'This is a branch; no sub-branches available'
+      });
+    }
+
+    // Filter populated branches to ensure they are actual branches
+    const branches = company.branches.filter(b => b.isBranch === true);
+
+    res.json({
+      success: true,
+      data: branches,
+      total: branches.length
+    });
+  } catch (error) {
+    console.error('Error fetching branches:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };

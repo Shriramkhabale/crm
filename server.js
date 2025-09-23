@@ -111,7 +111,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
 app.use('/api/leave-types', leaveTypeRoutes);
 app.use('/api/payroll', payrollRoutes);
-app.use('/api/comapany-dashboard', companyDashboardRoutes);
+app.use('/api/comapanydashboard', companyDashboardRoutes);
 
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);

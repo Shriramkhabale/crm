@@ -8,9 +8,12 @@ const getDayName = (date) => date.toLocaleDateString('en-US', { weekday: 'short'
 
 // Controller: Generate payroll slip for selected employee
 exports.generatePayroll = async (req, res) => {
+  console.log("req.body",req.body);
+  console.log("req.user",req.user);
+  
   try {
     const { employeeId, payrollMonth, deductions = {}, incomes = {} } = req.body;
-    let companyId = req.user.companyId;  // Default from auth middleware
+    let companyId = req.user.companyId || req.user.id;  // Default from auth middleware
 
     if (!employeeId || !companyId) {
       return res.status(400).json({ message: 'employeeId and companyId are required' });

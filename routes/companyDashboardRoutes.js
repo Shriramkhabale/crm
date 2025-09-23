@@ -1,27 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const dashboardController = require('../controllers/companyDashboardController');
-const authMiddleware = require('../middleware/authMiddleware'); // or 'protect'
+const { 
+  getEmployees, 
+  getTasks, 
+  getSupportTickets, 
+  getBranches 
+} = require('../controllers/companyDashboardController');
 
-// Protect all routes with authentication middleware
-router.use(authMiddleware);
+// Assume you have an auth middleware (e.g., verifies JWT and sets req.user)
+const authMiddleware = require('../middleware/authMiddleware');  // Your auth
 
-// Total employees count
-router.get('/employees/count', dashboardController.getTotalEmployees);
-
-// Total projects count
-router.get('/projects/count', dashboardController.getTotalProjects);
-
-// Tasks count grouped by status
-router.get('/tasks/status', dashboardController.getTasksByStatus);
-
-// Total support tickets count
-router.get('/tickets/count', dashboardController.getTotalTickets);
-
-// Today's present employees count
-router.get('/attendance/present-today', dashboardController.getTodaysPresentEmployees);
-
-// Bonus: Tasks created per day for last 7 days
-router.get('/tasks/last7days', dashboardController.getTasksLast7Days);
+// Routes (all protected by auth)
+router.get('/employees', authMiddleware, getEmployees);
+router.get('/tasks', authMiddleware, getSupportTickets);
+router.get('/support-tickets', authMiddleware, getSupportTickets);
+router.get('/branches', authMiddleware, getBranches);
 
 module.exports = router;
