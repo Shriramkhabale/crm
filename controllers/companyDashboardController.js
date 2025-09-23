@@ -4,19 +4,14 @@ const Task = require('../models/Task');
 const SupportTicket = require('../models/SupportTicket');
 const mongoose = require('mongoose');
 
-// Helper: Extract companyId from req.user (from auth middleware)
-const getCompanyId = (req) => {
-  const { companyId } = req.user;  // Assume token payload has companyId
-  if (!companyId) {
-    throw new Error('Company ID not found in token');
-  }
-  return companyId;
-};
 
 // GET /api/companydashboard/employees - Fetch all employees for the company
 exports.getEmployees = async (req, res) => {
+  console.log("req", req);
+  
   try {
-    const companyId = getCompanyId(req);
+    const companyId = req.user.userId;
+    
     const { page = 1, limit = 50 } = req.query;
     const skip = (page - 1) * limit;
 
@@ -43,7 +38,7 @@ exports.getEmployees = async (req, res) => {
 // GET /api/companydashboard/tasks - Fetch all tasks for company (incl. branches)
 exports.getTasks = async (req, res) => {
   try {
-    const companyId = getCompanyId(req);
+    const companyId = req.user.userId;
     const { page = 1, limit = 50 } = req.query;
     const skip = (page - 1) * limit;
 
@@ -92,7 +87,7 @@ exports.getTasks = async (req, res) => {
 // GET /api/companydashboard/support-tickets - Fetch all support tickets for company
 exports.getSupportTickets = async (req, res) => {
   try {
-    const companyId = getCompanyId(req);
+    const companyId =req.user.userId;
     const { page = 1, limit = 50 } = req.query;
     const skip = (page - 1) * limit;
 
@@ -119,7 +114,7 @@ exports.getSupportTickets = async (req, res) => {
 // GET /api/companydashboard/branches - Fetch branches if main company
 exports.getBranches = async (req, res) => {
   try {
-    const companyId = getCompanyId(req);
+    const companyId = req.user.userId;
 
     const company = await Company.findById(companyId).populate('branches', 'businessName businessEmail address businessPhone isBranch parentCompanyId');
     if (!company) {
