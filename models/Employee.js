@@ -12,17 +12,17 @@ const employeeSchema = new mongoose.Schema({
   salary: { type: String },                            // Salary *
   dateOfJoining: { type: Date },                       // Date of Joining
   shift: { type: String },                             // Shift (dynamic dropdown)
-  department: { type: String, required: true },       // Department (dynamic dropdown)
+  department: [{ type: String, required: true }],       // Department (dynamic dropdown)
   role: {type: String},
-  designation:{type: String},
+  designation:[{type: String}],
   aadharNumber: { type: String },                       // Aadhar Number
   panNumber: { type: String },                          // Pan Number
   userUpi: { type: String },                            // User Upi
   weeklyHoliday: [{
     type: String,
     enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  }],                                                   // Weekly Holiday
-  address: { type: String },                           // Leave-Type
+  }],                                                  
+  address: { type: String },                          
   accessPermissions: {
   type: [String],
   default: [],
@@ -115,6 +115,13 @@ const employeeSchema = new mongoose.Schema({
    'employee_performance'
   ],
 },
+
+
+ paidLeaves: [{
+    type: { type: String, required: true },         
+    count: { type: Number, required: true, min: 0 }  
+  }],
+
 
   adharImage: { type: String },                       
   panImage: { type: String },                           

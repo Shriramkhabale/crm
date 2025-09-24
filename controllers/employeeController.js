@@ -21,6 +21,7 @@ exports.createEmployee = async (req, res) => {
       aadharNumber,
       panNumber,
       userUpi,
+      paidLeaves,
       weeklyHoliday,
       address,
       accessPermissions,
@@ -52,6 +53,7 @@ exports.createEmployee = async (req, res) => {
       panNumber,
       userUpi,
       weeklyHoliday,
+      paidLeaves,
       address,
       accessPermissions,
       adharImage,
@@ -89,6 +91,7 @@ exports.updateEmployee = async (req, res) => {
       panNumber,
       userUpi,
       weeklyHoliday,
+      paidLeaves,
       address,
       accessPermissions,
       qrCode
@@ -108,6 +111,7 @@ exports.updateEmployee = async (req, res) => {
     if (panNumber) employee.panNumber = panNumber;
     if (userUpi) employee.userUpi = userUpi;
     if (weeklyHoliday) employee.weeklyHoliday = weeklyHoliday;
+    if (paidLeaves) employee.paidLeaves = paidLeaves;
     if (address) employee.address = address;
     if (accessPermissions) employee.accessPermissions = accessPermissions;
     if (qrCode) employee.qrCode = qrCode;

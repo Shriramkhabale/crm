@@ -117,10 +117,7 @@ app.use('/api/comapanydashboard', companyDashboardRoutes);
 
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);
-
-
-  app.use('/api/sadashboard', superadminDashboardRoutes);
-
+app.use('/api/sadashboard', superadminDashboardRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
