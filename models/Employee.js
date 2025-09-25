@@ -1,4 +1,3 @@
-//models/Employee.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -116,18 +115,33 @@ const employeeSchema = new mongoose.Schema({
   ],
 },
 
-
  paidLeaves: [{
     type: { type: String, required: true },         
     count: { type: Number, required: true, min: 0 }  
   }],
 
-
   adharImage: { type: String },                       
   panImage: { type: String },                           
   profileImage: { type: String }, 
+
+  // NEW: Dynamic additional documents (user's choice)
+  documents: [{
+    type: { type: String, required: true, trim: true, minlength: 1 },  // e.g., "Driving License", "Passport"
+    url: { type: String, required: true },  // Cloudinary URL
+    publicId: { type: String, required: true },  // Cloudinary public ID for deletion
+    uploadedAt: { type: Date, default: Date.now }
+  }],
+
   qrCode: { type: String }, 
 }, { timestamps: true });
+
+// NEW: Ensure unique types within dynamic documents
+employeeSchema.path('documents').validate(function(docs) {
+  if (!Array.isArray(docs)) return true;
+  const types = docs.map(doc => doc.type.toLowerCase());
+  const uniqueTypes = [...new Set(types)];
+  return uniqueTypes.length === types.length;  // No duplicates
+}, 'Duplicate document types not allowed');
 
 // Hash password before saving
 employeeSchema.pre('save', async function (next) {

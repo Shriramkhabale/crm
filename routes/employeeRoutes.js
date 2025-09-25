@@ -13,7 +13,8 @@ router.post(
   parser.fields([
     { name: 'adharImage', maxCount: 1 },
     { name: 'panImage', maxCount: 1 },
-    { name: 'profileImage', maxCount: 1 }
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'documents', maxCount: 10 }  // NEW: Dynamic docs (up to 10 files)
   ]),
   employeeController.createEmployee
 );
@@ -24,11 +25,15 @@ router.put(
   parser.fields([
     { name: 'adharImage', maxCount: 1 },
     { name: 'panImage', maxCount: 1 },
-    { name: 'profileImage', maxCount: 1 }
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'documents', maxCount: 10 }  // NEW: Dynamic docs (up to 10 files)
+
   ]),
   employeeController.updateEmployee
 );
 
+// NEW: Get all documents (fixed + dynamic) for an employee
+router.get('/:id/documents', employeeController.getEmployeeDocuments);
 
 // Get all employees
 router.get('/', employeeController.getAllEmployees);
