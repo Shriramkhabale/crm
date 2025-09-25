@@ -177,13 +177,13 @@ exports.updateProject = async (req, res) => {
       clientCompany,
       clientEmail,
       clientMobileNo,
-      clientAddress,  // NEW
-      clientCity,     // NEW
-      clientState,    // NEW
-      projectHead,    // NEW
-      customFields: updateCustomFields,  // NEW: For full replace (optional)
-      newCustomFields,  // NEW: Array to add new ones
-      removeCustomFields  // NEW: Array of keys to remove, e.g., ["Priority"]
+      clientAddress,  
+      clientCity,     
+      clientState,   
+      projectHead,   
+      customFields: updateCustomFields,  
+      newCustomFields, 
+      removeCustomFields 
     } = req.body;
 
     // Standard field updates (unchanged + new)
@@ -200,11 +200,10 @@ exports.updateProject = async (req, res) => {
     if (clientCompany !== undefined) project.clientCompany = clientCompany;
     if (clientEmail !== undefined) project.clientEmail = clientEmail;
     if (clientMobileNo !== undefined) project.clientMobileNo = clientMobileNo;
-    if (clientAddress !== undefined) project.clientAddress = clientAddress;  // NEW
-    if (clientCity !== undefined) project.clientCity = clientCity;           // NEW
-    if (clientState !== undefined) project.clientState = clientState;        // NEW
+    if (clientAddress !== undefined) project.clientAddress = clientAddress; 
+    if (clientCity !== undefined) project.clientCity = clientCity;          
+    if (clientState !== undefined) project.clientState = clientState;        
 
-    // NEW: Update projectHead (validate if provided)
     if (projectHead !== undefined) {
       if (projectHead && teamMembers && Array.isArray(teamMembers) && !teamMembers.includes(projectHead)) {
         return res.status(400).json({ message: 'Project head must be one of the team members' });
@@ -212,7 +211,6 @@ exports.updateProject = async (req, res) => {
       project.projectHead = projectHead;
     }
 
-    // NEW: Handle customFields updates
     if (removeCustomFields && Array.isArray(removeCustomFields) && removeCustomFields.length > 0) {
       const keysToRemove = removeCustomFields.filter(key => key && key.trim() !== '');
       for (const keyToRemove of keysToRemove) {

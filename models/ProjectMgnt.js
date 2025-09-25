@@ -11,20 +11,17 @@ const projectSchema = new mongoose.Schema({
   teamMembers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
   progress: { type: Number, min: 0, max: 100, default: 0 },
   department: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
-  // NEW: Project head (one from teamMembers)
   projectHead: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
-  // NEW: Client details
   clientName: { type: String },
   clientCompany: { type: String },
   clientEmail: { type: String, match: /.+\@.+\..+/ },
   clientMobileNo: { type: String },
-  clientAddress: { type: String },  // NEW: Client address
-  clientCity: { type: String },     // NEW: Client city
-  clientState: { type: String },    // NEW: Client state
-  // NEW: Dynamic custom fields (key-value pairs)
+  clientAddress: { type: String }, 
+  clientCity: { type: String },   
+  clientState: { type: String },    
   customFields: [{
-    key: { type: String, required: true, trim: true, minlength: 1 },  // e.g., "Priority", "Risk Level"
-    value: { type: String, required: true }  // e.g., "High", "Medium Risk"
+    key: { type: String, required: true, trim: true, minlength: 1 },  
+    value: { type: String, required: true } 
   }]
 }, { timestamps: true });
 
@@ -32,7 +29,7 @@ const projectSchema = new mongoose.Schema({
 projectSchema.path('customFields.key').validate(function(keys) {
   if (!Array.isArray(keys)) return true;
   const uniqueKeys = [...new Set(keys.map(field => field.key.toLowerCase()))];
-  return uniqueKeys.length === keys.length;  // No duplicates
+  return uniqueKeys.length === keys.length;  
 }, 'Duplicate custom field keys not allowed');
 
 module.exports = mongoose.model('ProjectMgnt', projectSchema);

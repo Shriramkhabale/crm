@@ -38,6 +38,7 @@ const locationRoutes = require('./routes/locationTrackingRoutes');
 const ticketOptionsRoutes = require('./routes/ticketOptionsRoutes');
 const superadminDashboardRoutes = require('./routes/superadminDashboardRoutes');
 const advanceRoutes = require('./routes/advanceRoutes');
+const projectCustomStatusRoutes = require('./routes/projectCustomStatusRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -119,7 +120,8 @@ app.use('/api/comapanydashboard', companyDashboardRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);
 app.use('/api/sadashboard', superadminDashboardRoutes);
-app.use('/api/advance', advanceRoutes);  // Makes endpoints like /api/advances, /api/advances/employee/:id, etc.
+app.use('/api/advance', advanceRoutes); 
+app.use('/api/prjCustomStatus', projectCustomStatusRoutes); 
 
 // Start the server
 const PORT = process.env.PORT || 5000;
