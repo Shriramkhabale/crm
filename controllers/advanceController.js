@@ -13,7 +13,7 @@ exports.createAdvance = async (req, res) => {
     }
 
     const { amount: amountStr, notes, employee: employeeIdFromBody, approvedBy: approvedByFromBody } = req.body;
-    const companyId = req.user.companyId;  // Always use logged-in user's company
+    const companyId = req.user.companyId || req.user.userId; 
 
     // Parse amount to Number
     const amount = parseFloat(amountStr);
@@ -31,6 +31,11 @@ exports.createAdvance = async (req, res) => {
 
     // Verify target employee exists in company
     const employee = await Employee.findOne({ _id: employeeId, company: companyId });
+    console.log("employeeId",employeeId);
+    console.log("companyId",companyId);
+    console.log("approvedBy",approvedBy);
+    
+    
     if (!employee) {
       return res.status(404).json({ message: 'Target employee not found in the company' });
     }
@@ -86,7 +91,7 @@ exports.getAdvancesByEmployee = async (req, res) => {
     }
 
     const { employeeId } = req.params;
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId || req.user.userId;
 
     if (!employeeId) {
       return res.status(400).json({ message: 'employeeId is required' });
@@ -98,12 +103,7 @@ exports.getAdvancesByEmployee = async (req, res) => {
       return res.status(404).json({ message: 'Employee not found in your company' });
     }
 
-    // Admin check: If not self-view, must be admin
-    if (req.user.id !== employeeId) {
-      if (!req.user.accessPermissions?.includes('salary_generation')) {
-        return res.status(403).json({ message: 'You do not have permission to view other employees\' advances.' });
-      }
-    }
+   
 
     const { page = 1, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
@@ -137,12 +137,7 @@ exports.getCompanyAdvances = async (req, res) => {
       return res.status(401).json({ message: 'Authentication required.' });
     }
 
-    // Admin-only: Restrict to users with salary_generation permission
-    if (!req.user.accessPermissions?.includes('salary_generation')) {
-      return res.status(403).json({ message: 'Admin access required to view company advances.' });
-    }
-
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId || req.user.userId;
     const { employeeId, page = 1, limit = 20 } = req.query;
     const skip = (page - 1) * limit;
 

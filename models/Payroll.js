@@ -1,4 +1,3 @@
-//models/Payroll.js
 const mongoose = require('mongoose');
 
 const payrollSchema = new mongoose.Schema({
@@ -13,24 +12,23 @@ const payrollSchema = new mongoose.Schema({
   paidLeaves: { type: Number, default: 0 },  // Paid leaves (no deduction)
   holidayCount: { type: Number, default: 0 },  // Company + weekly holidays (no work expected)
 
-  deductions: {
-    tax: { type: Number, default: 0 },
-    providentFund: { type: Number, default: 0 },
-    other: { type: Number, default: 0 },
-  },
+  // UPDATED: Dynamic deductions as array of {type, amount}
+  deductions: [{
+    type: { type: String, required: true, trim: true, minlength: 1 }, // e.g., "Tax", "Custom Penalty"
+    amount: { type: Number, required: true, min: 0 } // Positive amount (subtract ed in netSalary)
+  }],
 
-  incomes: {
-    bonus: { type: Number, default: 0 },
-    incentives: { type: Number, default: 0 },
-    other: { type: Number, default: 0 },
-  },
+  // UPDATED: Dynamic incomes as array of {type, amount}
+  incomes: [{
+    type: { type: String, required: true, trim: true, minlength: 1 }, // e.g., "Bonus", "Overtime"
+    amount: { type: Number, required: true, min: 0 } // Positive amount (added to netSalary)
+  }],
 
-  totalDeductions: { type: Number, default: 0 },  // Includes manual + auto leave/half deductions
-  totalIncomes: { type: Number, default: 0 },
+  totalDeductions: { type: Number, default: 0 },  // Sum of deductions array + auto leave/half deductions
+  totalIncomes: { type: Number, default: 0 },     // Sum of incomes array
   netSalary: { type: Number, default: 0 },
 
   payrollMonth: { type: String, required: true }, // e.g. '2024-09'
-
 }, { timestamps: true });
 
 // Indexes for efficient company-wide queries

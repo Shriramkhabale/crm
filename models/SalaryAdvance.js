@@ -1,5 +1,3 @@
-//models/SalaryAdvance.js
-
 const mongoose = require('mongoose');
 
 const salaryAdvanceSchema = new mongoose.Schema({
@@ -37,6 +35,8 @@ const salaryAdvanceSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Indexes for efficient queries (existing + new for undeducted advances)
 salaryAdvanceSchema.index({ company: 1, employee: 1 });
+salaryAdvanceSchema.index({ company: 1, deductedInPayroll: 1 });  // NEW: For quick undeducted lookup (null/undefined)
 
 module.exports = mongoose.model('SalaryAdvance', salaryAdvanceSchema);
