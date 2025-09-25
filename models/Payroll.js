@@ -1,3 +1,4 @@
+//models/Payroll.js
 const mongoose = require('mongoose');
 
 const payrollSchema = new mongoose.Schema({

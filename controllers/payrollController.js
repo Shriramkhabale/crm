@@ -1,6 +1,7 @@
+// controllers/payrollController
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
-const Holiday = require('../models/Holiday'); // Company holidays
+const Holiday = require('../models/Holiday');
 const Payroll = require('../models/Payroll');
 
 // Helper: Get day name from date (e.g., 'Sun')

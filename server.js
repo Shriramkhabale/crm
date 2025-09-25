@@ -36,7 +36,8 @@ const payrollRoutes = require('./routes/payrollRoutes');
 const companyDashboardRoutes = require('./routes/companyDashboardRoutes')
 const locationRoutes = require('./routes/locationTrackingRoutes');
 const ticketOptionsRoutes = require('./routes/ticketOptionsRoutes');
-  const superadminDashboardRoutes = require('./routes/superadminDashboardRoutes');
+const superadminDashboardRoutes = require('./routes/superadminDashboardRoutes');
+const advanceRoutes = require('./routes/advanceRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -118,6 +119,7 @@ app.use('/api/comapanydashboard', companyDashboardRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);
 app.use('/api/sadashboard', superadminDashboardRoutes);
+app.use('/api/advance', advanceRoutes);  // Makes endpoints like /api/advances, /api/advances/employee/:id, etc.
 
 // Start the server
 const PORT = process.env.PORT || 5000;

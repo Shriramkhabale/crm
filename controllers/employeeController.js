@@ -1,7 +1,7 @@
 // controllers/employeeController.js
+// controllers/employeeController.js
 const Employee = require('../models/Employee');
 const bcrypt = require('bcryptjs');
-
 
 exports.createEmployee = async (req, res) => {
   try {
@@ -15,7 +15,7 @@ exports.createEmployee = async (req, res) => {
       salary,
       dateOfJoining,
       shift,
-      department,
+      departments,  // <-- Changed: Expect 'departments' (plural) from frontend
       role,
       designation,
       aadharNumber,
@@ -28,10 +28,23 @@ exports.createEmployee = async (req, res) => {
       qrCode
     } = req.body;
 
+    // Validate departments array
+    if (!departments || !Array.isArray(departments) || departments.length === 0) {
+      return res.status(400).json({ message: 'At least one department is required' });
+    }
+
+    // Ensure departments are unique and non-empty strings
+    const validDepartments = [...new Set(departments.filter(id => id && id.trim() !== ''))];
+    if (validDepartments.length === 0) {
+      return res.status(400).json({ message: 'Invalid departments provided' });
+    }
+
+    console.log('Creating employee with departments:', validDepartments); // Debug log
+
     const existing = await Employee.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
 
-   // Extract uploaded file URLs
+    // Extract uploaded file URLs
     const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : undefined;
     const panImage = req.files?.panImage ? req.files.panImage[0].path : undefined;
     const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : undefined;
@@ -46,7 +59,7 @@ exports.createEmployee = async (req, res) => {
       salary,
       dateOfJoining,
       shift,
-      department,
+      department: validDepartments,  // <-- Fixed: Assign 'departments' to model field 'department' (as array)
       role,
       designation,
       aadharNumber,
@@ -65,7 +78,8 @@ exports.createEmployee = async (req, res) => {
     await employee.save();
     res.status(201).json({ message: 'Employee created', employee });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    console.error('Create employee error:', error); // Enhanced logging
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -84,7 +98,7 @@ exports.updateEmployee = async (req, res) => {
       salary,
       dateOfJoining,
       shift,
-      department,
+      departments,  // <-- Changed: Expect 'departments' (plural) from frontend
       role,
       designation,
       aadharNumber,
@@ -97,6 +111,19 @@ exports.updateEmployee = async (req, res) => {
       qrCode
     } = req.body;
 
+    // Handle departments update (validate if provided)
+    if (departments) {
+      if (!Array.isArray(departments) || departments.length === 0) {
+        return res.status(400).json({ message: 'Invalid departments provided' });
+      }
+      const validDepartments = [...new Set(departments.filter(id => id && id.trim() !== ''))];
+      if (validDepartments.length === 0) {
+        return res.status(400).json({ message: 'At least one department is required' });
+      }
+      employee.department = validDepartments;  // <-- Fixed: Assign to model field 'department' (as array)
+      console.log('Updating employee departments:', validDepartments); // Debug log
+    }
+
     if (teamMemberName) employee.teamMemberName = teamMemberName;
     if (mobileNumber) employee.mobileNumber = mobileNumber;
     if (emergencyMobileNumber) employee.emergencyMobileNumber = emergencyMobileNumber;
@@ -104,7 +131,6 @@ exports.updateEmployee = async (req, res) => {
     if (salary !== undefined) employee.salary = salary;
     if (dateOfJoining) employee.dateOfJoining = dateOfJoining;
     if (shift) employee.shift = shift;
-    if (department) employee.department = department;
     if (role) employee.role = role;
     if (designation) employee.designation = designation;
     if (aadharNumber) employee.aadharNumber = aadharNumber;
@@ -120,22 +146,24 @@ exports.updateEmployee = async (req, res) => {
     if (req.files?.adharImage) {
       employee.adharImage = req.files.adharImage[0].path;
     }
+
     if (req.files?.panImage) {
       employee.panImage = req.files.panImage[0].path;
     }
+    
     if (req.files?.profileImage) {
       employee.profileImage = req.files.profileImage[0].path;
     }
 
     if (password) {
       const salt = await bcrypt.genSalt(10);
-      employee.password = await bcrypt.hash(password, salt);
+      employee.password = await bcrypt.hash(password, (await bcrypt.genSalt(10)), salt);
     }
 
     await employee.save();
     res.json({ message: 'Employee updated', employee });
   } catch (error) {
-    console.error('Update employee error:', error);
+    console.error('Update employee error:', error); // Enhanced logging
     res.status(500).json({ message: 'Server error', error: error.message || error });
   }
 };
