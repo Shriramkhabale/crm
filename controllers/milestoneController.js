@@ -1,3 +1,4 @@
+//controllers/MilestoneController.js
 const Milestone = require('../models/Milestone');
 
 exports.createMilestone = async (req, res) => {

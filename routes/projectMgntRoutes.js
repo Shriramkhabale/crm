@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const projectController = require('../controllers/projectMgntController');
-const authMiddleware = require('../middleware/authMiddleware'); // your auth middleware
+const authMiddleware = require('../middleware/authMiddleware'); 
 
 // Create a new project
 router.post('/', authMiddleware, projectController.createProject);
