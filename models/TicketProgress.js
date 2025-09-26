@@ -1,3 +1,5 @@
+//models/TicketProgress.js
+
 const mongoose = require('mongoose');
 
 const ticketProgressSchema = new mongoose.Schema({
@@ -20,6 +22,9 @@ const ticketProgressSchema = new mongoose.Schema({
     required: true,
   },
   description:{
+    type: String,
+  },
+  reassignDescription: {  // <-- NEW: Separate field for reassignment reasons (optional)
     type: String,
   },
 });

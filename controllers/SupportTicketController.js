@@ -146,8 +146,7 @@ exports.updateTicketWithImages = async (req, res) => {
 exports.reassignTicket = async (req, res) => {
   try {
     const { id: ticketId } = req.params;
-    const { newAssignedTo, description = '', updatedBy } = req.body;
-
+    const { newAssignedTo, reassigned_description = '', updatedBy } = req.body;
     // Validation
     if (!ticketId || !newAssignedTo || !updatedBy) {
       return res.status(400).json({ 
@@ -155,40 +154,47 @@ exports.reassignTicket = async (req, res) => {
         message: 'ticketId (from params), newAssignedTo, and updatedBy are required' 
       });
     }
-
     // Fetch existing ticket
     const ticket = await SupportTicket.findById(ticketId);
     if (!ticket) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
-
-    // Optional: Prevent self-reassignment or validate newAssignedTo exists (add Employee check if needed)
     if (ticket.assignedTo === newAssignedTo) {
       return res.status(400).json({ success: false, message: 'Ticket is already assigned to this employee' });
     }
-
-    // Update assignedTo (keep other fields intact)
+    // Convert to ObjectId
+    const ticketIdObj = new mongoose.Types.ObjectId(ticketId);
+    const updatedById = new mongoose.Types.ObjectId(updatedBy);
+    // Update ticket assignedTo
     ticket.assignedTo = newAssignedTo;
-    ticket.updatedAt = new Date(); // Ensure timestamp update
+    ticket.updatedAt = new Date();
     await ticket.save();
 
-    // Create progress entry for history (no status change)
+
+
+
+   // Standard description for reassignment (always set)
+    const standardDescription = `Ticket reassigned to employee ${newAssignedTo}`;
+
+    const progressDescription = standardDescription;  // Standard message in description
+    const progressReassignDescription = reassigned_description;  // Custom reason in separate field
+
+    
     const progress = new TicketProgress({
-      ticketId,
+      ticketId: ticketIdObj,
       status: ticket.status, // Preserve current status
-      description: description || `Ticket reassigned to employee ${newAssignedTo}`,
-      updatedBy, // ObjectId ref to Employee
+      description: progressDescription,  // <-- FIXED: Set standard/combined description
+      reassignDescription: progressReassignDescription,  // <-- FIXED: Map body to schema field (was 'reassigned_description')
+      updatedBy: updatedById,
     });
     await progress.save();
-
-    // Optional: Populate for response
+    // Populate for response
     await progress.populate('updatedBy', 'name email');
-
     res.json({ 
       success: true, 
       message: 'Ticket reassigned successfully. History updated.', 
       ticket, 
-      progress 
+      progress  // Now includes both description and reassignDescription correctly
     });
   } catch (error) {
     console.error('Reassign ticket error:', error);
