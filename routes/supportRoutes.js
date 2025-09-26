@@ -1,9 +1,9 @@
+//routes/supportRoutes.js
 const express = require("express");
 const router = express.Router();
 const SupportTicketController = require("../controllers/SupportTicketController");
 const upload = require("../middleware/uploadImages"); // your multer-cloudinary middleware
 
-// POST: Create ticket with images and optional signImage
 router.post(
   "/",
   upload.fields([
@@ -17,8 +17,8 @@ router.post(
 router.get("/", SupportTicketController.getTickets);
 router.get("/:id", SupportTicketController.getTicketById);
 router.get('/customer/:customerId', SupportTicketController.getTicketsByCustomer);
+router.put('/:id/reassign', SupportTicketController.reassignTicket);
 
-// PUT: Update ticket with images and optional new signImage (replaces old signature)
 router.put(
   "/:id",
   upload.fields([
@@ -28,7 +28,6 @@ router.put(
   SupportTicketController.updateTicketWithImages
 );
 
-// DELETE (unchanged)
 router.delete("/:id", SupportTicketController.deleteTicket);
 
 module.exports = router;

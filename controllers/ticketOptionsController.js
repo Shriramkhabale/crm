@@ -5,7 +5,7 @@ exports.addTicketOption = async (req, res) => {
   try {
     const { category, value } = req.body;  // Single: { category: 'services', value: 'New Service' }
     // Or multiple: { category: 'services', values: ['Service1', 'Service2'] }
-    const companyId = req.user.companyId;  // From auth middleware
+    const companyId = req.user.companyId || req.user.id;  // From auth middleware
 
     if (!companyId) {
       return res.status(401).json({ success: false, message: 'Company ID required' });
@@ -66,7 +66,7 @@ exports.addTicketOption = async (req, res) => {
 // GET: Fetch all options for dropdowns
 exports.getTicketOptions = async (req, res) => {
   try {
-    const companyId = req.user.companyId;
+    const companyId = req.user.companyId || req.user.id;
     if (!companyId) {
       return res.status(401).json({ success: false, message: 'Company ID required' });
     }

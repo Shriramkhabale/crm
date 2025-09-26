@@ -1,16 +1,8 @@
 // controllers/SupportTicketController.js
 const SupportTicket = require("../models/SupportTicket");
+const TicketProgress = require("../models/TicketProgress");  // <-- ADD THIS LINE (fixes the ReferenceError)
+const mongoose = require('mongoose');  // <-- ADD THIS LINE (for safe ObjectId conversion in refs)
 
-// Create new support ticket
-// exports.createTicket = async (req, res) => {
-//     try {
-//         const ticket = new SupportTicket(req.body);
-//         await ticket.save();
-//         res.status(201).json({ success: true, ticket });
-//     } catch (err) {
-//         res.status(400).json({ success: false, message: err.message });
-//     }
-// };
 
 // Get all tickets
 exports.getTickets = async (req, res) => {
@@ -67,16 +59,6 @@ exports.getTicketById = async (req, res) => {
     }
 };
 
-// Update ticket
-// exports.updateTicket = async (req, res) => {
-//     try {
-//         const ticket = await SupportTicket.findByIdAndUpdate(req.params.id, req.body, { new: true });
-//         if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
-//         res.json({ success: true, ticket });
-//     } catch (err) {
-//         res.status(400).json({ success: false, message: err.message });
-//     }
-// };
 
 // Delete ticket
 exports.deleteTicket = async (req, res) => {
@@ -156,5 +138,60 @@ exports.updateTicketWithImages = async (req, res) => {
   } catch (err) {
     console.error('Update ticket error:', err);
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+
+// Reassign ticket to another employee, log in progress history
+exports.reassignTicket = async (req, res) => {
+  try {
+    const { id: ticketId } = req.params;
+    const { newAssignedTo, description = '', updatedBy } = req.body;
+
+    // Validation
+    if (!ticketId || !newAssignedTo || !updatedBy) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ticketId (from params), newAssignedTo, and updatedBy are required' 
+      });
+    }
+
+    // Fetch existing ticket
+    const ticket = await SupportTicket.findById(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    // Optional: Prevent self-reassignment or validate newAssignedTo exists (add Employee check if needed)
+    if (ticket.assignedTo === newAssignedTo) {
+      return res.status(400).json({ success: false, message: 'Ticket is already assigned to this employee' });
+    }
+
+    // Update assignedTo (keep other fields intact)
+    ticket.assignedTo = newAssignedTo;
+    ticket.updatedAt = new Date(); // Ensure timestamp update
+    await ticket.save();
+
+    // Create progress entry for history (no status change)
+    const progress = new TicketProgress({
+      ticketId,
+      status: ticket.status, // Preserve current status
+      description: description || `Ticket reassigned to employee ${newAssignedTo}`,
+      updatedBy, // ObjectId ref to Employee
+    });
+    await progress.save();
+
+    // Optional: Populate for response
+    await progress.populate('updatedBy', 'name email');
+
+    res.json({ 
+      success: true, 
+      message: 'Ticket reassigned successfully. History updated.', 
+      ticket, 
+      progress 
+    });
+  } catch (error) {
+    console.error('Reassign ticket error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
