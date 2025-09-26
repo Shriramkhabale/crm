@@ -55,6 +55,9 @@ const SupportTicketSchema = new mongoose.Schema(
         },
         customerMobile:{ //field for manager/support engineer to fill (optional)
              type: String
+        },
+        reopenReason:{
+            type:String
         }
     },
     { timestamps: true }   

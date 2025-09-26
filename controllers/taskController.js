@@ -7,9 +7,8 @@ const mongoose = require('mongoose');
 
 async function getCompanyIdFromUser (user) {
   if (user.role === 'company') {
-    return user.userId; // userId is companyId
+    return user.userId; 
   } else{
-    // Find employee by userId and get companyId
     const employee = await Employee.findById(user.userId).select('company');
     if (!employee) throw new Error('Employee not found');
     return employee.company.toString();
@@ -43,31 +42,16 @@ exports.createTask = async (req, res) => {
     // const createdBy = req.user.userId; // from auth middleware
     const company = req.user.companyId || bodyCompany; // from auth middleware
 
-
     // Basic required fields
     if (!title || !department || !assignedTo || !startDateTime || !endDateTime) {
       return res.status(400).json({ message: 'Title, department, assignedTo, startDateTime, and endDateTime are required' });
     }
 
-console.log("company",company);
-console.log("assignedTo",assignedTo);
-console.log("Employee",Employee);
-
-  // Validate assignedTo user exists and belongs to same company
-// const assignee = await Employee.findOne({ _id: assignedTo, company: companyStr });
-
-
-const assignedToArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
-const assignee = await Employee.find({ _id: { $in: assignedToArray }, company: company.toString() });
-if (assignee.length !== assignedToArray.length) {
-  return res.status(400).json({ message: 'One or more assigned users not found in your company' });
-}
-
-
-
-// const assignee = await Employee.findOne({ _id: assignedTo, company: company.toString() });
-
-
+    const assignedToArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    const assignee = await Employee.find({ _id: { $in: assignedToArray }, company: company.toString() });
+    if (assignee.length !== assignedToArray.length) {
+      return res.status(400).json({ message: 'One or more assigned users not found in your company' });
+    }
 
 
     // Validate repeat fields

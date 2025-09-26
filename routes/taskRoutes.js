@@ -23,7 +23,6 @@ router.post(
 router.get('/tasks', authMiddleware, taskController.getAllTasks);
 router.get('/tasks/:id', authMiddleware, taskController.getTaskById);
 // router.put('/tasks/:id', authMiddleware, taskController.updateTask);
-// Update task with file uploads-
 router.put(
   '/tasks/:id',
   authMiddleware,
@@ -39,8 +38,6 @@ router.delete('/tasks/:id', authMiddleware, taskController.deleteTask);
 
 router.put('/:taskId/shifttask', authMiddleware, taskController.shiftedTask);
 router.get('/tasks/employee/:employeeId', taskController.getTasksByEmployeeId);
-
-// Add these routes below existing ones
 
 // Get credit points task-wise
 router.get('/creditpoints', authMiddleware, taskController.getCreditPointsTaskWise);
