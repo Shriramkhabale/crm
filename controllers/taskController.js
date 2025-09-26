@@ -40,7 +40,7 @@ exports.createTask = async (req, res) => {
 
 
     // const createdBy = req.user.userId; // from auth middleware
-    const company = req.user.companyId || bodyCompany; // from auth middleware
+    const company = req.user.companyId || bodyCompany  || req.user.userId; // from auth middleware
 
     // Basic required fields
     if (!title || !department || !assignedTo || !startDateTime || !endDateTime) {

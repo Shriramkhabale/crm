@@ -43,7 +43,7 @@ exports.generatePayroll = async (req, res) => {
   
   try {
     const { employeeId, payrollMonth, deductions = [], incomes = [] } = req.body; // Expect arrays; fallback to empty
-    let companyId = req.user.companyId ||  req.user.id || req.user.id;  // Default from auth middleware
+    let companyId = req.user.companyId ||  req.user.id ;  // Default from auth middleware
 
     if (!employeeId || !companyId) {
       return res.status(400).json({ message: 'employeeId and companyId are required' });
