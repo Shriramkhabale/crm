@@ -27,7 +27,7 @@ const TicketOptionsSchema = new mongoose.Schema(
       type: String,
       trim: true
     }],
-    descriptions: [{  // Array of description templates
+    description: [{  // Array of description templates
       type: String,
       trim: true
     }]
