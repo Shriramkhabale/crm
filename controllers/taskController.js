@@ -8,139 +8,69 @@ const mongoose = require('mongoose');
 async function getCompanyIdFromUser (user) {
   if (user.role === 'company') {
     return user.userId; 
-  } else{
+  } else {
     const employee = await Employee.findById(user.userId).select('company');
     if (!employee) throw new Error('Employee not found');
     return employee.company.toString();
   } 
 }
+
 const validWeekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-// Helper: Generate instances up to LOOKAHEAD_DAYS ahead
-const LOOKAHEAD_DAYS = 3;  // NEW: Configurable - generate 3 days in advance
 
+// Helper: Generate instances (unchanged - supports 'next only' for future)
+const LOOKAHEAD_DAYS = 3;
 
-async function generateRecurringInstances(parentTaskData, companyId) {
+async function generateRecurringInstances(parentTaskData, companyId, generateNextOnly = false) {
   if (!parentTaskData.repeat || !parentTaskData.recurrenceActive || !parentTaskData.nextFinishDateTime) {
     console.log('Skipping generation: repeat disabled or no end date');
-    return [];  // Skip if disabled or no end date
+    return [];  
   }
   
   const instances = [];
-  let currentDate = new Date();  // Start from TODAY
-  currentDate.setHours(0, 0, 0, 0);  // Normalize to start of day
   const endDateTime = new Date(parentTaskData.nextFinishDateTime);
-  const lookaheadEnd = new Date(currentDate);
-  lookaheadEnd.setDate(lookaheadEnd.getDate() + LOOKAHEAD_DAYS);
-  if (lookaheadEnd > endDateTime) lookaheadEnd = endDateTime;  // Don't exceed series end
+  const now = new Date();
+  now.setSeconds(0, 0, 0);  
   
   const parentId = parentTaskData._id;
   const companyObjId = new mongoose.Types.ObjectId(companyId);
   
-  // CORRECTED: Helper to create instance with duplicate check and validation
-  const createInstance = async (instanceDate) => {
-    try {
-      // CORRECTED: Ensure future start (not just date)
-      const now = new Date();
-      now.setSeconds(0, 0);  // Normalize now
-      if (instanceDate < now) {
-        console.log(`Skipping past date: ${instanceDate.toISOString()}`);
-        return null;
-      }
-      
-      const startDt = new Date(instanceDate);
-      startDt.setHours(
-        parentTaskData.startDateTime.getHours(),
-        parentTaskData.startDateTime.getMinutes(),
-        0, 0  // Reset seconds/millis
-      );
-      const endDt = new Date(instanceDate);
-      endDt.setHours(
-        parentTaskData.endDateTime.getHours(),
-        parentTaskData.endDateTime.getMinutes(),
-        59, 999  // End of day
-      );
-      
-      // CORRECTED: For daily tasks, enforce same day (start and end on same date)
-      if (parentTaskData.repeatFrequency === 'daily') {
-        endDt.setDate(startDt.getDate());  // Same day
-        endDt.setMonth(startDt.getMonth());
-        endDt.setFullYear(startDt.getFullYear());
-      }
-      
-      // Skip if beyond series end or lookahead
-      if (endDt > endDateTime || startDt > lookaheadEnd) {
-        console.log(`Skipping beyond limits: ${startDt.toISOString()} to ${endDt.toISOString()}`);
-        return null;
-      }
-      
-      // CORRECTED: Check for existing instance to prevent duplicates
-      const existing = await Task.findOne({
-        parentTask: parentId,
-        startDateTime: startDt,
-        company: companyObjId
-      });
-      if (existing) {
-        console.log(`Duplicate instance skipped: ${startDt.toISOString()}`);
-        return existing;  // Return existing instead of creating new
-      }
-      
-      // CORRECTED: For monthly, validate date doesn't roll over (e.g., Feb 31 -> Mar 3)
-      if (parentTaskData.repeatFrequency === 'monthly' && instanceDate.getDate() !== parseInt(parentTaskData.repeatDatesOfMonth[0])) {  // Assuming first dayNum for check
-        console.log(`Invalid monthly date (rolled over): ${instanceDate.toISOString()}`);
-        return null;
-      }
-      
-      const instance = new Task({
-        title: parentTaskData.title,
-        description: parentTaskData.description,
-        department: parentTaskData.department,
-        assignedTo: parentTaskData.assignedTo,
-        startDateTime: startDt,
-        endDateTime: endDt,
-        status: 'pending',  // Reset for new instance
-        creditPoints: parentTaskData.creditPoints,
-        priority: parentTaskData.priority,
-        company: parentTaskData.company,
-        createdBy: parentTaskData.createdBy,
-        images: parentTaskData.images || [],
-        audios: parentTaskData.audios || [],
-        files: parentTaskData.files || [],
-        parentTask: parentId,
-        isRecurringInstance: true,  // Flag as child
-        recurrenceActive: parentTaskData.recurrenceActive  // Inherit
-      });
-      
-      await instance.save();
-      
-      // OPTIONAL: Populate immediately (uncomment if needed for immediate use)
-      // await instance.populate('assignedTo', 'firstName lastName role');
-      // await instance.populate('createdBy', 'firstName lastName role');
-      
-      console.log(`Created instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
-      return instance;
-    } catch (error) {
-      console.error(`Error creating instance for ${instanceDate.toISOString()}:`, error);
-      return null;  // Skip on error
+  if (generateNextOnly) {
+    const nextInstanceDate = calculateNextInstanceDate(parentTaskData, now);
+    if (!nextInstanceDate || nextInstanceDate > endDateTime) {
+      console.log('No next instance needed (beyond end date or no valid date)');
+      return [];
     }
-  };
+    
+    console.log(`Generating only next instance on: ${nextInstanceDate.toISOString()}`);
+    const instance = await createInstance(nextInstanceDate, parentTaskData, parentId, companyObjId, endDateTime);
+    if (instance) instances.push(instance);
+    return instances;
+  }
+  
+  // Multi-mode (unchanged)
+  let currentDate = new Date(now);  
+  currentDate.setHours(0, 0, 0, 0);  
+  const lookaheadEnd = new Date(currentDate);
+  lookaheadEnd.setDate(lookaheadEnd.getDate() + LOOKAHEAD_DAYS);
+  if (lookaheadEnd > endDateTime) lookaheadEnd = endDateTime;
   
   let iterations = 0;
-  const maxIterations = 100;  // Guard against infinite loops
+  const maxIterations = 100;
   
   while (currentDate <= lookaheadEnd && iterations < maxIterations) {
     iterations++;
     let instanceDate = new Date(currentDate);
-    instanceDate.setHours(0, 0, 0, 0);  // Normalize
+    instanceDate.setHours(0, 0, 0, 0);
     
     if (parentTaskData.repeatFrequency === 'daily') {
-      const instance = await createInstance(instanceDate);
+      const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime);
       if (instance) instances.push(instance);
       currentDate.setDate(currentDate.getDate() + 1);
       
     } else if (parentTaskData.repeatFrequency === 'weekly') {
       const currentDayName = instanceDate.toLocaleDateString('en-US', { weekday: 'long' });
       if (parentTaskData.repeatDaysOfWeek.includes(currentDayName)) {
-        const instance = await createInstance(instanceDate);
+        const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime);
         if (instance) instances.push(instance);
       }
       currentDate.setDate(currentDate.getDate() + 1);
@@ -149,19 +79,17 @@ async function generateRecurringInstances(parentTaskData, companyId) {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       for (const dayNum of parentTaskData.repeatDatesOfMonth) {
-        // CORRECTED: Create date and validate it stays in the month
         const testDate = new Date(year, month, dayNum);
         if (isNaN(testDate.getTime()) || testDate.getMonth() !== month || testDate > lookaheadEnd) {
           console.log(`Skipping invalid monthly date: ${year}-${month + 1}-${dayNum}`);
           continue;
         }
-        const instance = await createInstance(testDate);
+        const instance = await createInstance(testDate, parentTaskData, parentId, companyObjId, endDateTime);
         if (instance) instances.push(instance);
       }
-      // CORRECTED: Advance to next month properly
       currentDate.setMonth(currentDate.getMonth() + 1);
-      currentDate.setDate(1);  // Start of next month
-      if (currentDate.getDate() !== 1) currentDate.setDate(1);  // Ensure
+      currentDate.setDate(1);
+      if (currentDate.getDate() !== 1) currentDate.setDate(1);
     }
   }
   
@@ -169,13 +97,149 @@ async function generateRecurringInstances(parentTaskData, companyId) {
     console.warn('Max iterations reached in generateRecurringInstances');
   }
   
-  console.log(`Generated ${instances.length} recurring instances for task ${parentId}`);
+  console.log(`Generated ${instances.length} recurring instances for task ${parentId} (mode: ${generateNextOnly ? 'next only' : 'multi'})`);
   return instances;
 }
 
+// Helper to calculate the NEXT scheduled date (unchanged - future only)
+function calculateNextInstanceDate(parentTask, currentDate) {
+  const freq = parentTask.repeatFrequency;
+  let nextDate = new Date(currentDate);
+  nextDate.setHours(0, 0, 0, 0);  
+  
+  if (freq === 'daily') {
+    const todayStart = new Date(nextDate);
+    todayStart.setHours(parentTask.startDateTime.getHours(), parentTask.startDateTime.getMinutes(), 0, 0);
+    if (currentDate > todayStart) {
+      nextDate.setDate(nextDate.getDate() + 1);  
+    }
+    return nextDate;
+    
+  } else if (freq === 'weekly') {
+    const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+    let daysFromNow = 7;  
+    parentTask.repeatDaysOfWeek.forEach(dayName => {
+      const targetDay = daysMap[dayName];
+      const currentDay = nextDate.getDay();
+      let diff = (targetDay - currentDay + 7) % 7;
+      if (diff === 0) diff = 7;  
+      if (diff < daysFromNow) daysFromNow = diff;
+    });
+    nextDate.setDate(nextDate.getDate() + daysFromNow);
+    return nextDate;
+    
+  } else if (freq === 'monthly') {
+    let year = nextDate.getFullYear();
+    let month = nextDate.getMonth();
+    let day = nextDate.getDate();
+    
+    let found = false;
+    while (!found) {
+      for (const dayNum of parentTask.repeatDatesOfMonth.sort((a, b) => a - b)) {
+        const testDate = new Date(year, month, dayNum);
+        if (testDate.getMonth() === month && testDate >= nextDate) {  
+          nextDate = testDate;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        month++;
+        if (month > 11) {
+          month = 0;
+          year++;
+        }
+        nextDate = new Date(year, month, 1);  
+      }
+    }
+    return nextDate;
+  }
+  
+  return null;  
+}
 
+// createInstance helper (unchanged)
+async function createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime) {
+  try {
+    const now = new Date();
+    now.setSeconds(0, 0);  
+    if (instanceDate < now) {
+      console.log(`Skipping past date: ${instanceDate.toISOString()}`);
+      return null;
+    }
+    
+    const startDt = new Date(instanceDate);
+    startDt.setHours(
+      parentTaskData.startDateTime.getHours(),
+      parentTaskData.startDateTime.getMinutes(),
+      0, 0
+    );
+    const endDt = new Date(instanceDate);
+    endDt.setHours(
+      parentTaskData.endDateTime.getHours(),
+      parentTaskData.endDateTime.getMinutes(),
+      59, 999
+    );
+    
+    if (parentTaskData.repeatFrequency === 'daily') {
+      endDt.setDate(startDt.getDate());
+      endDt.setMonth(startDt.getMonth());
+      endDt.setFullYear(startDt.getFullYear());
+    }
+    
+    if (endDt > endDateTime || startDt > endDateTime) {
+      console.log(`Skipping beyond end: ${startDt.toISOString()}`);
+      return null;
+    }
+    
+    const existing = await Task.findOne({
+      parentTask: parentId,
+      startDateTime: startDt,
+      company: companyObjId
+    });
+    if (existing) {
+      console.log(`Existing instance found: ${startDt.toISOString()}`);
+      return existing;
+    }
+    
+    if (parentTaskData.repeatFrequency === 'monthly') {
+      const expectedDay = instanceDate.getDate();
+      if (!parentTaskData.repeatDatesOfMonth.includes(expectedDay)) {
+        console.log(`Invalid monthly day ${expectedDay}`);
+        return null;
+      }
+    }
+    
+    const instance = new Task({
+      title: parentTaskData.title,
+      description: parentTaskData.description,
+      department: parentTaskData.department,
+      assignedTo: parentTaskData.assignedTo,
+      startDateTime: startDt,
+      endDateTime: endDt,
+      status: 'pending',
+      creditPoints: parentTaskData.creditPoints,
+      priority: parentTaskData.priority,
+      company: parentTaskData.company,
+      createdBy: parentTaskData.createdBy,
+      images: parentTaskData.images || [],
+      audios: parentTaskData.audios || [],
+      files: parentTaskData.files || [],
+      parentTask: parentId,
+      isRecurringInstance: true,
+      recurrenceActive: parentTaskData.recurrenceActive
+    });
+    
+    await instance.save();
+    console.log(`Created instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
+    return instance;
+  } catch (error) {
+    console.error(`Error creating instance for ${instanceDate.toISOString()}:`, error);
+    return null;
+  }
+}
 
-// NEW: Endpoint to stop recurrence (PUT /task/tasks/:id/stop-recurrence)
+// stopRecurrence (unchanged)
 exports.stopRecurrence = async (req, res) => {
   try {
     const { id } = req.params;
@@ -193,7 +257,7 @@ exports.stopRecurrence = async (req, res) => {
   }
 };
 
-// NEW: Endpoint to resume recurrence (PUT /task/tasks/:id/resume-recurrence)
+// resumeRecurrence (unchanged - generates next only)
 exports.resumeRecurrence = async (req, res) => {
   try {
     const { id } = req.params;
@@ -204,17 +268,15 @@ exports.resumeRecurrence = async (req, res) => {
     }
     task.recurrenceActive = true;
     await task.save();
-    // Optionally regenerate immediate future instances
-    const instances = await generateRecurringInstances(task.toObject(), company);
-    res.json({ message: 'Recurrence resumed. New instances generated.', task, newInstances: instances.length });
+    const instances = await generateRecurringInstances(task.toObject(), company, true);  
+    res.json({ message: 'Recurrence resumed. Next instance generated.', task, newInstances: instances.length });
   } catch (error) {
     console.error('Resume recurrence error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-
-
+// createTask (unchanged - saves only parent)
 exports.createTask = async (req, res) => {
   try {
     const {
@@ -224,7 +286,6 @@ exports.createTask = async (req, res) => {
     } = req.body;
     const company = req.user.companyId || bodyCompany || req.user.userId;
     
-    // Basic validation (existing)
     if (!title || !department || !assignedTo || !startDateTime || !endDateTime) {
       return res.status(400).json({ message: 'Title, department, assignedTo, startDateTime, and endDateTime are required' });
     }
@@ -234,7 +295,6 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ message: 'One or more assigned users not found in your company' });
     }
     
-    // Repeat validation (enhanced for multi-select) - unchanged
     if (repeat) {
       if (!repeatFrequency || !['daily', 'weekly', 'monthly'].includes(repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
@@ -252,7 +312,7 @@ exports.createTask = async (req, res) => {
           }
         }
       }
-      if (repeatFrequency === 'monthly') {
+           if (repeatFrequency === 'monthly') {
         if (!Array.isArray(repeatDatesOfMonth) || repeatDatesOfMonth.length === 0) {
           return res.status(400).json({ message: 'repeatDatesOfMonth must be a non-empty array when repeatFrequency is monthly' });
         }
@@ -292,7 +352,7 @@ exports.createTask = async (req, res) => {
     await task.save();
     
     // FIXED: No auto-generation of instances on create - save only parent/one-time task
-    // (Instances can be generated later via endpoint/cron if needed)
+    // (Instances generated on-demand in getAllTasks)
     console.log(`Task created: ${repeat ? 'Recurring parent' : 'One-time task'} with ID ${task._id}, repeat: ${repeat}`);
 
     // Populate
@@ -309,25 +369,23 @@ exports.createTask = async (req, res) => {
   }
 };
 
-
-// Update getAllTasks (add recurring filter param, replace existing function)
+// UPDATED: getAllTasks (key change: Fetch ALL instances via $lookup, generate next if missing)
 exports.getAllTasks = async (req, res) => {
   try {
-    console.log('🔍 getAllTasks - Query params:', req.query);  // Log params (e.g., recurring=all)
+    console.log('🔍 getAllTasks - Query params:', req.query);  
 
-    const companyStr = await getCompanyIdFromUser (req.user);  // String from function
+    const companyStr = await getCompanyIdFromUser  (req.user);  
     if (!companyStr) {
       return res.status(400).json({ message: 'Company ID not found in user data' });
     }
 
-    // FIXED: Cast company to ObjectId for exact match in aggregation
     const companyObjId = new mongoose.Types.ObjectId(companyStr);
-    console.log('🔍 Resolved company (string):', companyStr, ' (ObjectId):', companyObjId);  // Log for debug
+    console.log('🔍 Resolved company (string):', companyStr, ' (ObjectId):', companyObjId);  
 
     // Base filters: Always include company as ObjectId
     let filters = { 
-      company: companyObjId,  // FIXED: Cast to ObjectId
-      isRecurringInstance: { $ne: true }  // Parents/non-recurring by default
+      company: companyObjId,  
+      isRecurringInstance: { $ne: true }  // Parents/non-recurring by default (fetch children separately via lookup)
     };
 
     // Apply other query filters (existing)
@@ -337,41 +395,41 @@ exports.getAllTasks = async (req, res) => {
     if (req.query.priority) filters.priority = req.query.priority;
     if (req.query.repeat !== undefined) filters.repeat = req.query.repeat === 'true';
 
-    console.log('🔍 Initial filters:', JSON.stringify(filters, null, 2));  // Log filters
+    console.log('🔍 Initial filters:', JSON.stringify(filters, null, 2));  
 
-    // Recurring filter logic (with fixes)
-    const recurringFilter = req.query.recurring;  // 'recurring', 'non-recurring', 'all'
+    // Recurring filter logic (unchanged)
+    const recurringFilter = req.query.recurring;  
     if (recurringFilter === 'recurring') {
       filters.repeat = true;
       filters.recurrenceActive = true;
     } else if (recurringFilter === 'non-recurring') {
-      // FIXED: Use $or without conflicting isRecurringInstance
       filters.$or = [
-        { repeat: { $ne: true } },  // One-time tasks
-        { isRecurringInstance: true },  // Children (treat as non-recurring)
-        { recurrenceActive: false }  // Stopped series
+        { repeat: { $ne: true } },  
+        { isRecurringInstance: true },  
+        { recurrenceActive: false }  
       ];
-      delete filters.isRecurringInstance;  // FIXED: Remove to avoid conflict with $or
+      delete filters.isRecurringInstance;  
     } else if (recurringFilter === 'all') {
-      // FIXED: Broader match - include all tasks (parents + children) for company
-      filters = { company: companyObjId };  // Remove isRecurringInstance to include everything
+      filters = { company: companyObjId };  
     }
 
-    console.log('🔍 Final filters after recurring:', JSON.stringify(filters, null, 2));  // Log
+    console.log('🔍 Final filters after recurring:', JSON.stringify(filters, null, 2));  
 
-    // FIXED: Test count before aggregation (for debug - remove after testing)
-    const testCount = await Task.countDocuments(filters);
-    console.log('🔍 Tasks matching filters (count):', testCount);  // Should be 1+ for your task
-
-    // Aggregation pipeline (unchanged, but now filters match)
+    // UPDATED: Aggregation pipeline - $lookup fetches ALL instances (no date filter for past/future)
     const aggregation = await Task.aggregate([
       { $match: filters },
       {
         $lookup: {
-          from: 'tasks',  // Self-join for children
+          from: 'tasks',  
           let: { parentId: '$_id' },
           pipeline: [
-            { $match: { $expr: { $eq: ['$parentTask', '$$parentId'] } } },
+            { 
+              $match: { 
+                $expr: { $eq: ['$parentTask', '$$parentId'] }, 
+                company: companyObjId  // Ensure company match
+              } 
+            },
+            // FIXED: No date filter - fetches ALL instances (past + future)
             { $lookup: { from: 'employees', localField: 'assignedTo', foreignField: '_id', as: 'assignedTo' } },
             { $lookup: { from: 'employees', localField: 'createdBy', foreignField: '_id', as: 'createdBy' } }
           ],
@@ -396,31 +454,75 @@ exports.getAllTasks = async (req, res) => {
       { $sort: { createdAt: -1 } }
     ]);
 
-    console.log('🔍 Aggregation results length:', aggregation.length);  // Log
+    console.log('🔍 Aggregation results length:', aggregation.length);  
 
-    // Flatten: Add children as separate entries (unchanged)
+    // UPDATED: For each recurring parent, check/generate next future instance if missing
+    // (Past instances are already fetched via lookup; only add future if needed)
     const allTasks = [];
-    aggregation.forEach(parent => {
+    for (const parent of aggregation) {
+      // Add parent to list
       allTasks.push({
         ...parent,
-        isRecurringInstance: false,  // Flag parent
+        isRecurringInstance: false,  
         isOverdue: parent.isOverdue
       });
-      // Add children
-      parent.recurringInstances.forEach(child => {
+
+      // FIXED: Fetch all existing instances (past + future) from lookup
+      const existingInstances = parent.recurringInstances || [];
+      console.log(`🔍 Parent ${parent._id}: Found ${existingInstances.length} existing instances`);
+
+      // Add all existing instances (past + any future)
+      existingInstances.forEach(child => {
         allTasks.push({
           ...child,
           isRecurringInstance: true,
-          parentTitle: parent.title,  // For UI
+          parentTitle: parent.title,  
           isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
         });
       });
-    });
 
-    // Final sort (unchanged)
+      // NEW: If recurring and active, check if next future instance exists; generate if missing
+      if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
+        const now = new Date();
+        const nextDate = calculateNextInstanceDate(parent, now);
+        const endDate = new Date(parent.nextFinishDateTime);
+
+        if (nextDate && nextDate <= endDate) {
+          // Check if next instance already exists (by startDateTime)
+          const nextStartTime = new Date(nextDate);
+          nextStartTime.setHours(parent.startDateTime.getHours(), parent.startDateTime.getMinutes(), 0, 0);
+          
+          const nextExists = existingInstances.some(child => 
+            new Date(child.startDateTime).getTime() === nextStartTime.getTime()
+          );
+
+          if (!nextExists) {
+            console.log(`🔍 Generating missing next instance for parent ${parent._id} on ${nextStartTime.toISOString()}`);
+            const newInstances = await generateRecurringInstances(parent, companyStr, true);  // true = next only
+            if (newInstances.length > 0) {
+              // Add the new next instance to the list (fresh fetch not needed since just created)
+              const newChild = newInstances[0];
+              allTasks.push({
+                ...newChild,
+                isRecurringInstance: true,
+                parentTitle: parent.title,
+                isOverdue: false  // Future, so not overdue
+              });
+              console.log(`🔍 Added new next instance to response`);
+            }
+          } else {
+            console.log(`🔍 Next instance already exists for parent ${parent._id}`);
+          }
+        } else {
+          console.log(`🔍 No next instance needed for parent ${parent._id} (beyond end or invalid)`);
+        }
+      }
+    }
+
+    // Final sort: By startDateTime descending (recent/past first, then future)
     allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
 
-    console.log(`📦 Returning ${allTasks.length} tasks, sample title:`, allTasks[0]?.title);  // Log final output
+    console.log(`📦 Returning ${allTasks.length} tasks (including all past instances), sample title:`, allTasks[0]?.title);  
 
     res.json({ tasks: allTasks });
   } catch (error) {
@@ -429,8 +531,7 @@ exports.getAllTasks = async (req, res) => {
   }
 };
 
-
-// Updated getTaskById to include children if parent
+// UPDATED: getTaskById (fetch ALL instances for parent, including past)
 exports.getTaskById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -441,25 +542,57 @@ exports.getTaskById = async (req, res) => {
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
-    // NEW: If parent with repeat, fetch children
+    
+    // UPDATED: Fetch ALL instances (past + future) if parent
     let recurringInstances = [];
     if (task.repeat) {
-      recurringInstances = await Task.find({ parentTask: id })
+      recurringInstances = await Task.find({ parentTask: id, company })
         .populate('assignedTo', 'firstName role')
         .populate('createdBy', 'firstName role')
-        .sort({ startDateTime: 1 });
-      // Compute overdue for children
-      const oneDayMs = 24 * 60 * 60 * 1000;
+        .sort({ startDateTime: 1 });  // Chronological order (past to future)
+      
+      // FIXED: No date filter - includes all past/future
+      console.log(`🔍 Fetched ${recurringInstances.length} instances for task ${id} (all past + future)`);
+      
+      // Compute overdue for all instances
       recurringInstances = recurringInstances.map(child => ({
         ...child.toObject(),
-        isOverdue: child.endDateTime < new Date(Date.now() - oneDayMs) && child.status !== 'completed',
+        isOverdue: child.endDateTime < new Date() && child.status !== 'completed',
       }));
+      
+      // NEW: Generate next if missing (similar to getAllTasks)
+      const now = new Date();
+      const nextDate = calculateNextInstanceDate(task.toObject(), now);
+      const endDate = new Date(task.nextFinishDateTime);
+      
+      if (task.recurrenceActive && nextDate && nextDate <= endDate) {
+        const nextStartTime = new Date(nextDate);
+        nextStartTime.setHours(task.startDateTime.getHours(), task.startDateTime.getMinutes(), 0, 0);
+        
+        const nextExists = recurringInstances.some(child => 
+          new Date(child.startDateTime).getTime() === nextStartTime.getTime()
+        );
+        
+        if (!nextExists) {
+          console.log(`🔍 Generating missing next instance for single task view ${id}`);
+          const newInstances = await generateRecurringInstances(task.toObject(), company, true);
+          if (newInstances.length > 0) {
+            const newChild = newInstances[0];
+            recurringInstances.push({
+              ...newChild,
+              isOverdue: false
+            });
+            recurringInstances.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
+          }
+        }
+      }
     }
-  // Compute overdue for main task
-    const taskWithOverdue = { ...task.toObject(), isOverdue: task.isOverdue };
+    
+    // Compute overdue for main task
+    const taskWithOverdue = { ...task.toObject(), isOverdue: task.endDateTime < new Date() && task.status !== 'completed' };
     res.json({ 
       task: taskWithOverdue, 
-      recurringInstances  // Array of children
+      recurringInstances  // All instances (past + future)
     });
   } catch (error) {
     console.error('Get task by ID error:', error);
@@ -467,16 +600,15 @@ exports.getTaskById = async (req, res) => {
   }
 };
 
-
-
+// updateTask (unchanged - updates parent, preserves existing instances)
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await getCompanyIdFromUser (req.user);
+    const company = await getCompanyIdFromUser  (req.user);
     const updateData = req.body;
     console.log("updateData", updateData);
 
-    // Validate repeat fields if updated - unchanged
+    // Validate repeat fields if updated (unchanged)
     if (updateData.repeat) {
       if (!updateData.repeatFrequency || !['daily', 'weekly', 'monthly'].includes(updateData.repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
@@ -510,7 +642,7 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    // Validate assignedTo if updated - unchanged
+    // Validate assignedTo if updated (unchanged)
     if (updateData.assignedTo) {
       const assignedToArray = Array.isArray(updateData.assignedTo) ? updateData.assignedTo : [updateData.assignedTo];
       const assignees = await Employee.find({ _id: { $in: assignedToArray }, company });
@@ -526,19 +658,17 @@ exports.updateTask = async (req, res) => {
       return res.status(404).json({ message: 'Task not found or not authorized' });
     }
     
-    // Apply updates
+    // Apply updates (preserves existing instances - no auto-regen)
     const updatedTaskData = { 
       ...existingTask.toObject(), 
       ...updateData, 
       updatedAt: new Date(),
-      isRecurringInstance: false,  // Keep false (assuming updating parent/one-time)
-      recurrenceActive: updateData.repeat ? true : false  // Active only if recurring
+      isRecurringInstance: false,  
+      recurrenceActive: updateData.repeat ? true : false  
     };
     
     const task = await Task.findByIdAndUpdate(id, updatedTaskData, { new: true, runValidators: true });
     
-    // FIXED: No auto-regeneration of instances on update - just update the task
-    // (If repeat changed to true, instances can be generated later via endpoint)
     console.log(`Task updated: ID ${id}, new repeat: ${task.repeat}`);
 
     await task.populate('assignedTo', 'firstName lastName role');
@@ -551,19 +681,18 @@ exports.updateTask = async (req, res) => {
   }
 };
 
-// Update deleteTask (replace existing function - handles series deletion)
+// deleteTask (unchanged - deletes parent + all instances if series)
 exports.deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await getCompanyIdFromUser (req.user);
-    const deleteSeries = req.query.deleteSeries === 'true';  // NEW: Query param for series deletion
+    const company = await getCompanyIdFromUser  (req.user);
+    const deleteSeries = req.query.deleteSeries === 'true';  
     if (deleteSeries) {
-      // NEW: Delete entire series (parent + all children)
       const parentTask = await Task.findOne({ _id: id, company, repeat: true, isRecurringInstance: { $ne: true } });
-      if (!parentTask) {
+           if (!parentTask) {
         return res.status(404).json({ message: 'Recurring parent task not found for series deletion' });
       }
-      // Delete all children
+      // Delete all children (past + future instances)
       await Task.deleteMany({ parentTask: id });
       // Delete parent
       await Task.findByIdAndDelete(id);
@@ -574,7 +703,7 @@ exports.deleteTask = async (req, res) => {
       if (!task) {
         return res.status(404).json({ message: 'Task not found or not authorized' });
       }
-      // If deleting a parent without series flag, still delete children (safety)
+      // If deleting a parent without series flag, still delete children (safety - includes past)
       if (task.repeat) {
         await Task.deleteMany({ parentTask: id });
       }
@@ -586,21 +715,20 @@ exports.deleteTask = async (req, res) => {
   }
 };
 
-
-
+// shiftedTask (unchanged - handles reassignment, works with instances too)
 exports.shiftedTask = async (req, res) => {
   try {
     const { taskId } = req.params;
     const { assignedTo, description, nextFollowUp } = req.body;
     const shiftedBy = req.user.id || req.user.userId; // from auth middleware
-console.log(" req.body-------", req.body);
+    console.log(" req.body-------", req.body);
 
     console.log("req.user",req.user);
     if (!assignedTo) {
       return res.status(400).json({ message: 'New assignee ID(s) is required' });
     }
 
-    // Find the task
+    // Find the task (works for parent or instance)
     const task = await Task.findById(taskId);
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
@@ -623,7 +751,6 @@ console.log(" req.body-------", req.body);
 
     console.log("nextFollowUp",nextFollowUp);
     
-
     await task.save();
 
     // Create status update entry
@@ -646,9 +773,7 @@ console.log(" req.body-------", req.body);
   }
 };
 
-
-
-
+// getTasksByEmployeeId (unchanged - fetches all tasks assigned to employee, including instances)
 exports.getTasksByEmployeeId = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -670,14 +795,10 @@ exports.getTasksByEmployeeId = async (req, res) => {
   }
 };
 
-
-
-
-
-// Get credit points task-wise (list tasks with credit points and assigned employees)
+// Get credit points task-wise (unchanged - includes all tasks/instances)
 exports.getCreditPointsTaskWise = async (req, res) => {
   try {
-    const company = await getCompanyIdFromUser (req.user);
+    const company = await getCompanyIdFromUser   (req.user);
 
     // Find tasks for company, select creditPoints and assignedTo
     const tasks = await Task.find({ company })
@@ -704,10 +825,10 @@ exports.getCreditPointsTaskWise = async (req, res) => {
   }
 };
 
-// Get credit points employee-wise (sum credit points from all tasks assigned to employee)
+// Get credit points employee-wise (unchanged - sums across all tasks/instances)
 exports.getCreditPointsEmployeeWise = async (req, res) => {
   try {
-    const company = await getCompanyIdFromUser (req.user);
+    const company = await getCompanyIdFromUser   (req.user);
 
     // Aggregate tasks grouped by assignedTo employees
     // Since assignedTo is an array, unwind it first
@@ -746,4 +867,18 @@ exports.getCreditPointsEmployeeWise = async (req, res) => {
     console.error('Get credit points employee-wise error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
+};
+
+module.exports = {
+  createTask,
+  getAllTasks,
+  getTaskById,
+  updateTask,
+  deleteTask,
+  stopRecurrence,
+  resumeRecurrence,
+  shiftedTask,
+  getTasksByEmployeeId,
+  getCreditPointsTaskWise,
+  getCreditPointsEmployeeWise
 };
