@@ -25,7 +25,6 @@ const taskSchema = new mongoose.Schema({
   parentTask: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' }, 
   isRecurringInstance: { type: Boolean, default: false },  
   recurrenceActive: { type: Boolean, default: true }, 
-
 }, { timestamps: true });
 
 // Virtual for overdue (only for non-repeat or daily children: >1 day past endDateTime)

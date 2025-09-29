@@ -223,6 +223,7 @@ exports.createTask = async (req, res) => {
       nextFinishDateTime, createdBy, status, company: bodyCompany
     } = req.body;
     const company = req.user.companyId || bodyCompany || req.user.userId;
+    
     // Basic validation (existing)
     if (!title || !department || !assignedTo || !startDateTime || !endDateTime) {
       return res.status(400).json({ message: 'Title, department, assignedTo, startDateTime, and endDateTime are required' });
@@ -232,7 +233,8 @@ exports.createTask = async (req, res) => {
     if (assignee.length !== assignedToArray.length) {
       return res.status(400).json({ message: 'One or more assigned users not found in your company' });
     }
-    // Repeat validation (enhanced for multi-select)
+    
+    // Repeat validation (enhanced for multi-select) - unchanged
     if (repeat) {
       if (!repeatFrequency || !['daily', 'weekly', 'monthly'].includes(repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
@@ -240,7 +242,7 @@ exports.createTask = async (req, res) => {
       if (!nextFinishDateTime || new Date(nextFinishDateTime) <= new Date(startDateTime)) {
         return res.status(400).json({ message: 'nextFinishDateTime must be after startDateTime when repeat is true' });
       }
- if (repeatFrequency === 'weekly') {
+      if (repeatFrequency === 'weekly') {
         if (!Array.isArray(repeatDaysOfWeek) || repeatDaysOfWeek.length === 0) {
           return res.status(400).json({ message: 'repeatDaysOfWeek must be a non-empty array when repeatFrequency is weekly' });
         }
@@ -265,12 +267,13 @@ exports.createTask = async (req, res) => {
         return res.status(400).json({ message: 'nextFollowUpDateTime is required when repeat is false' });
       }
     }
+    
     // Files (existing)
     const images = req.files?.images ? req.files.images.map(f => f.path) : [];
     const audios = req.files?.audios ? req.files.audios.map(f => f.path) : [];
     const files = req.files?.files ? req.files.files.map(f => f.path) : [];
 
-const taskData = {
+    const taskData = {
       title, description, department, assignedTo: assignedToArray,
       startDateTime: new Date(startDateTime), endDateTime: new Date(endDateTime),
       repeat, creditPoints, repeatFrequency: repeat ? repeatFrequency : undefined,
@@ -281,27 +284,27 @@ const taskData = {
       nextFinishDateTime: repeat ? new Date(nextFinishDateTime) : undefined,
       company: new mongoose.Types.ObjectId(company), status, createdBy: new mongoose.Types.ObjectId(createdBy),
       images, audios, files,
+      isRecurringInstance: false,  // Always false for new tasks (parent or one-time)
+      recurrenceActive: repeat ? true : false  // Active only if recurring
     };
+    
     const task = new Task(taskData);
     await task.save();
-    let instances = [];
-   if (repeat) {
-  task.recurrenceActive = true;  // NEW: Ensure active on creation
-  await task.save();  // Re-save with active flag
-  instances = await generateRecurringInstances(task.toObject(), company);
-  console.log(`Generated ${instances.length} recurring instances for task ${task._id}`);
-}
+    
+    // FIXED: No auto-generation of instances on create - save only parent/one-time task
+    // (Instances can be generated later via endpoint/cron if needed)
+    console.log(`Task created: ${repeat ? 'Recurring parent' : 'One-time task'} with ID ${task._id}, repeat: ${repeat}`);
 
     // Populate
     await task.populate('assignedTo', 'firstName lastName role');
     await task.populate('createdBy', 'firstName lastName role');
+    
     res.status(201).json({ 
       message: 'Task created successfully', 
-      task, 
-      recurringInstances: instances.map(inst => inst.toJSON())  // Return children in response
+      task  // Return single task (no recurringInstances array)
     });
   } catch (error) {
- console.error('Create task error:', error);
+    console.error('Create task error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -471,9 +474,9 @@ exports.updateTask = async (req, res) => {
     const { id } = req.params;
     const company = await getCompanyIdFromUser (req.user);
     const updateData = req.body;
-    console.log("updateData",updateData);
+    console.log("updateData", updateData);
 
-    // Validate repeat fields if updated
+    // Validate repeat fields if updated - unchanged
     if (updateData.repeat) {
       if (!updateData.repeatFrequency || !['daily', 'weekly', 'monthly'].includes(updateData.repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
@@ -497,9 +500,6 @@ exports.updateTask = async (req, res) => {
             return res.status(400).json({ message: `Invalid date in repeatDatesOfMonth: ${date}` });
           }
         }
-
-
-
       }
       if (!updateData.nextFinishDateTime) {
         return res.status(400).json({ message: 'nextFinishDateTime is required when repeat is true' });
@@ -510,7 +510,7 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    // Validate assignedTo if updated
+    // Validate assignedTo if updated - unchanged
     if (updateData.assignedTo) {
       const assignedToArray = Array.isArray(updateData.assignedTo) ? updateData.assignedTo : [updateData.assignedTo];
       const assignees = await Employee.find({ _id: { $in: assignedToArray }, company });
@@ -525,26 +525,31 @@ exports.updateTask = async (req, res) => {
     if (!existingTask) {
       return res.status(404).json({ message: 'Task not found or not authorized' });
     }
-    // Apply updates (existing)
-    const updatedTaskData = { ...existingTask.toObject(), ...updateData, updatedAt: new Date() };
+    
+    // Apply updates
+    const updatedTaskData = { 
+      ...existingTask.toObject(), 
+      ...updateData, 
+      updatedAt: new Date(),
+      isRecurringInstance: false,  // Keep false (assuming updating parent/one-time)
+      recurrenceActive: updateData.repeat ? true : false  // Active only if recurring
+    };
+    
     const task = await Task.findByIdAndUpdate(id, updatedTaskData, { new: true, runValidators: true });
-    if (updatedTaskData.repeat) {
-      task.recurrenceActive = true;  // NEW: Ensure active if repeat enabled
-      await task.save();  // Re-save
-      await Task.deleteMany({ parentTask: id });  // Clear old
-      // FIXED: Use updated task for regeneration
-      const instances = await generateRecurringInstances(task.toObject(), company);
-      console.log(`Regenerated ${instances.length} recurring instances for updated task ${id}`);
-    }
+    
+    // FIXED: No auto-regeneration of instances on update - just update the task
+    // (If repeat changed to true, instances can be generated later via endpoint)
+    console.log(`Task updated: ID ${id}, new repeat: ${task.repeat}`);
+
     await task.populate('assignedTo', 'firstName lastName role');
     await task.populate('createdBy', 'firstName lastName role');
+    
     res.json({ message: 'Task updated successfully', task });
   } catch (error) {
     console.error('Update task error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
 
 // Update deleteTask (replace existing function - handles series deletion)
 exports.deleteTask = async (req, res) => {
