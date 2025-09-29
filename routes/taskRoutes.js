@@ -22,7 +22,6 @@ router.post(
 
 router.get('/tasks', authMiddleware, taskController.getAllTasks);
 router.get('/tasks/:id', authMiddleware, taskController.getTaskById);
-// router.put('/tasks/:id', authMiddleware, taskController.updateTask);
 router.put(
   '/tasks/:id',
   authMiddleware,
@@ -44,6 +43,12 @@ router.get('/creditpoints', authMiddleware, taskController.getCreditPointsTaskWi
 
 // Get credit points employee-wise
 router.get('/creditpoints/employees', authMiddleware, taskController.getCreditPointsEmployeeWise);
+
+
+
+// NEW: Recurring management routes
+router.put('/tasks/:id/stop-recurrence', taskController.stopRecurrence);
+router.put('/tasks/:id/resume-recurrence', taskController.resumeRecurrence);
 
 
 module.exports = router;
