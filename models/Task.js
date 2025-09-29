@@ -24,6 +24,8 @@ const taskSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   parentTask: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },  // NEW: Links child to template
   isRecurringInstance: { type: Boolean, default: false },  // NEW: Flag for child tasks
+  recurrenceActive: { type: Boolean, default: true },  // NEW: Flag to enable/disable recurrence generation
+
 }, { timestamps: true });
 
 // Virtual for overdue (only for non-repeat or daily children: >1 day past endDateTime)

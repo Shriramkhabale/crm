@@ -165,12 +165,26 @@ exports.reassignTicket = async (req, res) => {
     // Convert to ObjectId
     const ticketIdObj = new mongoose.Types.ObjectId(ticketId);
     const updatedById = new mongoose.Types.ObjectId(updatedBy);
+
+    // NEW: Handle assignee history before updating assignedTo
+    const now = new Date();
+    const oldAssignee = ticket.assignedTo;  // Capture old assignee
+    
+    // Append old assignee to history if it's not already there (avoids duplicates)
+    if (oldAssignee && !ticket.assigneeHistory.some(h => h.employeeId === oldAssignee)) {
+      ticket.assigneeHistory.push({ employeeId: oldAssignee, assignedAt: ticket.updatedAt || ticket.createdAt });
+    }
+  
+
     // Update ticket assignedTo
     ticket.assignedTo = newAssignedTo;
     ticket.updatedAt = new Date();
+
+    // Append new assignee to history
+    ticket.assigneeHistory.push({ employeeId: newAssignedTo, assignedAt: now });
+   
+
     await ticket.save();
-
-
 
 
    // Standard description for reassignment (always set)

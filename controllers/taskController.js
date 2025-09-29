@@ -15,20 +15,34 @@ async function getCompanyIdFromUser (user) {
   } 
 }
 const validWeekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Helper: Generate instances up to LOOKAHEAD_DAYS ahead
+const LOOKAHEAD_DAYS = 3;  // NEW: Configurable - generate 3 days in advance
 
 async function generateRecurringInstances(parentTaskData, companyId) {
-  if (!parentTaskData.repeat || !parentTaskData.nextFinishDateTime) return [];
+  if (!parentTaskData.repeat || !parentTaskData.recurrenceActive || !parentTaskData.nextFinishDateTime) {
+    return [];  // NEW: Skip if disabled or no end date
+  }
+  
   const instances = [];
-  let currentDate = new Date(parentTaskData.startDateTime);
+  let currentDate = new Date();  // NEW: Start from TODAY, not parent startDate
   const endDateTime = new Date(parentTaskData.nextFinishDateTime);
+  const lookaheadEnd = new Date();  // NEW: Limit to 3 days ahead
+  lookaheadEnd.setDate(lookaheadEnd.getDate() + LOOKAHEAD_DAYS);
+  if (lookaheadEnd > endDateTime) lookaheadEnd = endDateTime;  // Don't exceed series end
+  
   const parentId = parentTaskData._id;
- // Helper to create instance
+  
+  // Helper to create instance (unchanged, but add check for future dates only)
   const createInstance = async (instanceDate) => {
+    if (instanceDate < new Date()) return null;  // NEW: Skip past dates
+    
     const startDt = new Date(instanceDate);
     startDt.setHours(parentTaskData.startDateTime.getHours(), parentTaskData.startDateTime.getMinutes(), 0, 0);
     const endDt = new Date(instanceDate);
     endDt.setHours(parentTaskData.endDateTime.getHours(), parentTaskData.endDateTime.getMinutes(), 59, 999);
-    if (endDt > endDateTime) return null;  // Beyond end
+    
+    if (endDt > endDateTime || startDt > lookaheadEnd) return null;  // NEW: Limit to lookahead + series end
+    
     const instance = new Task({
       title: parentTaskData.title,
       description: parentTaskData.description,
@@ -50,34 +64,31 @@ async function generateRecurringInstances(parentTaskData, companyId) {
     await instance.save();
     return instance;
   };
- while (currentDate <= endDateTime) {
+  
+  while (currentDate <= lookaheadEnd) {  // NEW: Loop only up to lookahead end
     let instanceDate = new Date(currentDate);
     if (parentTaskData.repeatFrequency === 'daily') {
-      // Daily: Every day
       const instance = await createInstance(instanceDate);
       if (instance) instances.push(instance);
       currentDate.setDate(currentDate.getDate() + 1);
     } else if (parentTaskData.repeatFrequency === 'weekly') {
-      // Weekly: Only on selected days
       const currentDayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
       if (parentTaskData.repeatDaysOfWeek.includes(currentDayName)) {
         const instance = await createInstance(instanceDate);
         if (instance) instances.push(instance);
       }
-      currentDate.setDate(currentDate.getDate() + 1);  // Advance day-by-day to check
+      currentDate.setDate(currentDate.getDate() + 1);
     } else if (parentTaskData.repeatFrequency === 'monthly') {
-      // Monthly: On selected dates each month
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       for (const dayNum of parentTaskData.repeatDatesOfMonth) {
         const instanceDate = new Date(year, month, dayNum);
-        if (isNaN(instanceDate.getTime())) continue;  // Invalid date (e.g., 31 in Feb)
+        if (isNaN(instanceDate.getTime()) || instanceDate > lookaheadEnd) continue;
         const instance = await createInstance(instanceDate);
         if (instance) instances.push(instance);
       }
-
-       currentDate.setMonth(currentDate.getMonth() + 1);
-      if (currentDate.getDate() !== 1) currentDate.setDate(1);  // Ensure start of month
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      if (currentDate.getDate() !== 1) currentDate.setDate(1);
     }
   }
   return instances;

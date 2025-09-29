@@ -12,6 +12,13 @@ const SupportTicketSchema = new mongoose.Schema(
         assignedTo:{ //field for manager/ support engineer to fill
             type: String
         },
+         assigneeHistory: [  // <-- NEW: Array to track full history of assignees (without deleting old ones)
+            {
+                employeeId: { type: String, required: true },  // Employee ID
+                assignedAt: { type: Date, default: Date.now }   // When assigned
+            }
+        ],
+        
         fieldWorkAssigned: {  //field for manager/ support engineer to fill
             type: Boolean,
             default: false,
