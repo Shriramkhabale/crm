@@ -310,59 +310,79 @@ const taskData = {
 // Update getAllTasks (add recurring filter param, replace existing function)
 exports.getAllTasks = async (req, res) => {
   try {
-    const company = await getCompanyIdFromUser (req.user);
-    if (!company) {
+    console.log('🔍 getAllTasks - Query params:', req.query);  // Log params (e.g., recurring=all)
+
+    const companyStr = await getCompanyIdFromUser (req.user);  // String from function
+    if (!companyStr) {
       return res.status(400).json({ message: 'Company ID not found in user data' });
     }
-    let filters = { company, isRecurringInstance: { $ne: true } };  // Parents by default
-    // Existing filters...
-    if (req.query.assignedTo) filters.assignedTo = req.query.assignedTo;
-    if (req.query.createdBy) filters.createdBy = req.query.createdBy;
-    if (req.query.department) filters.department = req.query.department;
+
+    // FIXED: Cast company to ObjectId for exact match in aggregation
+    const companyObjId = new mongoose.Types.ObjectId(companyStr);
+    console.log('🔍 Resolved company (string):', companyStr, ' (ObjectId):', companyObjId);  // Log for debug
+
+    // Base filters: Always include company as ObjectId
+    let filters = { 
+      company: companyObjId,  // FIXED: Cast to ObjectId
+      isRecurringInstance: { $ne: true }  // Parents/non-recurring by default
+    };
+
+    // Apply other query filters (existing)
+    if (req.query.assignedTo) filters.assignedTo = new mongoose.Types.ObjectId(req.query.assignedTo);
+    if (req.query.createdBy) filters.createdBy = new mongoose.Types.ObjectId(req.query.createdBy);
+    if (req.query.department) filters.department = new mongoose.Types.ObjectId(req.query.department);
     if (req.query.priority) filters.priority = req.query.priority;
     if (req.query.repeat !== undefined) filters.repeat = req.query.repeat === 'true';
 
-    // NEW: Recurring filter
-     const recurringFilter = req.query.recurring;  // 'recurring', 'non-recurring', 'all'
+    console.log('🔍 Initial filters:', JSON.stringify(filters, null, 2));  // Log filters
+
+    // Recurring filter logic (with fixes)
+    const recurringFilter = req.query.recurring;  // 'recurring', 'non-recurring', 'all'
     if (recurringFilter === 'recurring') {
-      filters.repeat = true;  // Only parents (recurring series)
-      filters.recurrenceActive = true;  // Only active series
+      filters.repeat = true;
+      filters.recurrenceActive = true;
     } else if (recurringFilter === 'non-recurring') {
+      // FIXED: Use $or without conflicting isRecurringInstance
       filters.$or = [
         { repeat: { $ne: true } },  // One-time tasks
-        { isRecurringInstance: true },  // Include children as non-recurring (they're instances, not series)
-        { recurrenceActive: false }  // Stopped series (treat as non-recurring)
+        { isRecurringInstance: true },  // Children (treat as non-recurring)
+        { recurrenceActive: false }  // Stopped series
       ];
+      delete filters.isRecurringInstance;  // FIXED: Remove to avoid conflict with $or
     } else if (recurringFilter === 'all') {
-      // Fetch all, including children separately
-      filters.isRecurringInstance = { $exists: false };  // Include everything, but handle children in aggregation
+      // FIXED: Broader match - include all tasks (parents + children) for company
+      filters = { company: companyObjId };  // Remove isRecurringInstance to include everything
     }
-    console.log("filters", filters);
-  // Use aggregation for efficiency (fetch parents + children in one query)
+
+    console.log('🔍 Final filters after recurring:', JSON.stringify(filters, null, 2));  // Log
+
+    // FIXED: Test count before aggregation (for debug - remove after testing)
+    const testCount = await Task.countDocuments(filters);
+    console.log('🔍 Tasks matching filters (count):', testCount);  // Should be 1+ for your task
+
+    // Aggregation pipeline (unchanged, but now filters match)
     const aggregation = await Task.aggregate([
       { $match: filters },
-      // Unwind for children if needed, but populate separately
       {
         $lookup: {
-          from: 'tasks',
+          from: 'tasks',  // Self-join for children
           let: { parentId: '$_id' },
           pipeline: [
             { $match: { $expr: { $eq: ['$parentTask', '$$parentId'] } } },
-            // REMOVED: { $match: { recurrenceActive: true } }  // Include all children
             { $lookup: { from: 'employees', localField: 'assignedTo', foreignField: '_id', as: 'assignedTo' } },
             { $lookup: { from: 'employees', localField: 'createdBy', foreignField: '_id', as: 'createdBy' } }
           ],
           as: 'recurringInstances'
         }
       },
-      // Compute overdue for each (virtual-like)
+      // Compute overdue (unchanged)
       {
         $addFields: {
           isOverdue: {
             $and: [
               { $lt: ['$endDateTime', new Date()] },
               { $ne: ['$status', 'completed'] },
-              { $or: [  // Only for non-recurring or daily children
+              { $or: [
                 { $eq: ['$repeatFrequency', 'daily'] },
                 { $eq: ['$repeat', false] }
               ] }
@@ -372,26 +392,33 @@ exports.getAllTasks = async (req, res) => {
       },
       { $sort: { createdAt: -1 } }
     ]);
-  // Flatten: Add children to their parents' array (for frontend to display)
+
+    console.log('🔍 Aggregation results length:', aggregation.length);  // Log
+
+    // Flatten: Add children as separate entries (unchanged)
     const allTasks = [];
     aggregation.forEach(parent => {
       allTasks.push({
         ...parent,
         isRecurringInstance: false,  // Flag parent
-        isOverdue: parent.isOverdue  // From aggregation
+        isOverdue: parent.isOverdue
       });
-      // Add children as separate entries
-        parent.recurringInstances.forEach(child => {
-          allTasks.push({
-            ...child,
-            isRecurringInstance: true,
-            parentTitle: parent.title,  // Ensure always set
-            isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
-          });
+      // Add children
+      parent.recurringInstances.forEach(child => {
+        allTasks.push({
+          ...child,
+          isRecurringInstance: true,
+          parentTitle: parent.title,  // For UI
+          isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
         });
+      });
     });
-    // Final sort (by startDateTime or createdAt)
+
+    // Final sort (unchanged)
     allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
+
+    console.log(`📦 Returning ${allTasks.length} tasks, sample title:`, allTasks[0]?.title);  // Log final output
+
     res.json({ tasks: allTasks });
   } catch (error) {
     console.error('Get all tasks error:', error);
