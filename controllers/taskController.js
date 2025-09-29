@@ -285,11 +285,13 @@ const taskData = {
     const task = new Task(taskData);
     await task.save();
     let instances = [];
-    if (repeat) {
-      // NEW: Generate child instances
-      instances = await generateRecurringInstances(taskData, company);
-      console.log(`Generated ${instances.length} recurring instances for task ${task._id}`);
-    }
+   if (repeat) {
+  task.recurrenceActive = true;  // NEW: Ensure active on creation
+  await task.save();  // Re-save with active flag
+  instances = await generateRecurringInstances(task.toObject(), company);
+  console.log(`Generated ${instances.length} recurring instances for task ${task._id}`);
+}
+
     // Populate
     await task.populate('assignedTo', 'firstName lastName role');
     await task.populate('createdBy', 'firstName lastName role');
@@ -304,8 +306,6 @@ const taskData = {
   }
 };
 
-
-// Updated getAllTasks to include children and overdue
 
 // Update getAllTasks (add recurring filter param, replace existing function)
 exports.getAllTasks = async (req, res) => {
@@ -344,11 +344,11 @@ exports.getAllTasks = async (req, res) => {
       // Unwind for children if needed, but populate separately
       {
         $lookup: {
-          from: 'tasks',  // Self-join for children
+          from: 'tasks',
           let: { parentId: '$_id' },
           pipeline: [
             { $match: { $expr: { $eq: ['$parentTask', '$$parentId'] } } },
-            { $match: { recurrenceActive: true } },  // Only active children
+            // REMOVED: { $match: { recurrenceActive: true } }  // Include all children
             { $lookup: { from: 'employees', localField: 'assignedTo', foreignField: '_id', as: 'assignedTo' } },
             { $lookup: { from: 'employees', localField: 'createdBy', foreignField: '_id', as: 'createdBy' } }
           ],
@@ -381,14 +381,14 @@ exports.getAllTasks = async (req, res) => {
         isOverdue: parent.isOverdue  // From aggregation
       });
       // Add children as separate entries
-      parent.recurringInstances.forEach(child => {
-        allTasks.push({
-          ...child,
-          isRecurringInstance: true,
-          parentTitle: parent.title,  // For UI indicator
-          isOverdue: child.isOverdue || (child.endDateTime < new Date() && child.status !== 'completed')  // Fallback
+        parent.recurringInstances.forEach(child => {
+          allTasks.push({
+            ...child,
+            isRecurringInstance: true,
+            parentTitle: parent.title,  // Ensure always set
+            isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
+          });
         });
-      });
     });
     // Final sort (by startDateTime or createdAt)
     allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
@@ -444,7 +444,7 @@ exports.updateTask = async (req, res) => {
     const { id } = req.params;
     const company = await getCompanyIdFromUser (req.user);
     const updateData = req.body;
-console.log("updateData",updateData);
+    console.log("updateData",updateData);
 
     // Validate repeat fields if updated
     if (updateData.repeat) {
@@ -501,13 +501,14 @@ console.log("updateData",updateData);
     // Apply updates (existing)
     const updatedTaskData = { ...existingTask.toObject(), ...updateData, updatedAt: new Date() };
     const task = await Task.findByIdAndUpdate(id, updatedTaskData, { new: true, runValidators: true });
-    // Delete old children if repeat changed or settings updated
     if (updatedTaskData.repeat) {
-      await Task.deleteMany({ parentTask: id });  // Clear old instances
-      const instances = await generateRecurringInstances(updatedTaskData, company);
+      task.recurrenceActive = true;  // NEW: Ensure active if repeat enabled
+      await task.save();  // Re-save
+      await Task.deleteMany({ parentTask: id });  // Clear old
+      // FIXED: Use updated task for regeneration
+      const instances = await generateRecurringInstances(task.toObject(), company);
       console.log(`Regenerated ${instances.length} recurring instances for updated task ${id}`);
     }
-    // Populate
     await task.populate('assignedTo', 'firstName lastName role');
     await task.populate('createdBy', 'firstName lastName role');
     res.json({ message: 'Task updated successfully', task });

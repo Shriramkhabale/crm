@@ -47,8 +47,8 @@ router.get('/creditpoints/employees', authMiddleware, taskController.getCreditPo
 
 
 // NEW: Recurring management routes
-router.put('/tasks/:id/stop-recurrence', taskController.stopRecurrence);
-router.put('/tasks/:id/resume-recurrence', taskController.resumeRecurrence);
+router.put('/tasks/:id/stop-recurrence',authMiddleware. taskController.stopRecurrence);
+router.put('/tasks/:id/resume-recurrence',authMiddleware, taskController.resumeRecurrence);
 
 
 module.exports = router;
