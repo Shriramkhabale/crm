@@ -3,6 +3,7 @@
 const Task = require('../models/Task');
 const Employee = require('../models/Employee');
 const TaskStatusUpdate = require('../models/TaskStatusUpdate');
+const Holiday = require('../models/Holiday'); 
 const mongoose = require('mongoose');
 
 async function getCompanyIdFromUser (user) {
@@ -17,7 +18,31 @@ async function getCompanyIdFromUser (user) {
 
 const validWeekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// Helper: Generate instances (unchanged - supports 'next only' for future)
+// NEW: Helper to fetch holidays for a period (uses your existing schema: company, name, date)
+async function getHolidaysForPeriod(companyId, startDate, endDate) {
+  try {
+    const holidays = await Holiday.find({
+      company: new mongoose.Types.ObjectId(companyId),
+      date: { $gte: startDate, $lte: endDate }
+    }).select('date name').sort({ date: 1 });
+    console.log(`Fetched ${holidays.length} holidays for period ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    return holidays;
+  } catch (error) {
+    console.error('Error fetching holidays:', error);
+    return [];  // Graceful fallback - no holidays means no shifts
+  }
+}
+
+// NEW: Check if a date is a holiday (compares YYYY-MM-DD to avoid time issues)
+function isHoliday(checkDate, holidays) {
+  const dateStr = checkDate.toISOString().split('T')[0];  // YYYY-MM-DD
+  return holidays.some(holiday => {
+    const holidayStr = holiday.date.toISOString().split('T')[0];
+    return dateStr === holidayStr;
+  });
+}
+
+
 const LOOKAHEAD_DAYS = 3;
 
 async function generateRecurringInstances(parentTaskData, companyId, generateNextOnly = false) {
@@ -34,6 +59,21 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
   const parentId = parentTaskData._id;
   const companyObjId = new mongoose.Types.ObjectId(companyId);
   
+  // NEW: Holiday handling - Fetch holidays for the relevant period
+  let periodStart = new Date(now);
+  let periodEnd;
+  if (generateNextOnly) {
+    // For next only: Fetch for next 30 days (buffer)
+    periodEnd = new Date(now);
+    periodEnd.setDate(periodEnd.getDate() + 30);
+  } else {
+    // For multi: Lookahead period
+    periodEnd = new Date(now);
+    periodEnd.setDate(periodEnd.getDate() + LOOKAHEAD_DAYS);
+  }
+  if (periodEnd > endDateTime) periodEnd = endDateTime;
+  const holidays = await getHolidaysForPeriod(companyId, periodStart, periodEnd);
+  
   if (generateNextOnly) {
     const nextInstanceDate = calculateNextInstanceDate(parentTaskData, now);
     if (!nextInstanceDate || nextInstanceDate > endDateTime) {
@@ -42,12 +82,12 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
     }
     
     console.log(`Generating only next instance on: ${nextInstanceDate.toISOString()}`);
-    const instance = await createInstance(nextInstanceDate, parentTaskData, parentId, companyObjId, endDateTime);
+    const instance = await createInstance(nextInstanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
     if (instance) instances.push(instance);
     return instances;
   }
   
-  // Multi-mode (unchanged)
+  // Multi-mode (loop with holiday check in createInstance)
   let currentDate = new Date(now);  
   currentDate.setHours(0, 0, 0, 0);  
   const lookaheadEnd = new Date(currentDate);
@@ -63,14 +103,14 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
     instanceDate.setHours(0, 0, 0, 0);
     
     if (parentTaskData.repeatFrequency === 'daily') {
-      const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime);
+      const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
       if (instance) instances.push(instance);
       currentDate.setDate(currentDate.getDate() + 1);
       
     } else if (parentTaskData.repeatFrequency === 'weekly') {
       const currentDayName = instanceDate.toLocaleDateString('en-US', { weekday: 'long' });
       if (parentTaskData.repeatDaysOfWeek.includes(currentDayName)) {
-        const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime);
+        const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
         if (instance) instances.push(instance);
       }
       currentDate.setDate(currentDate.getDate() + 1);
@@ -84,7 +124,7 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
           console.log(`Skipping invalid monthly date: ${year}-${month + 1}-${dayNum}`);
           continue;
         }
-        const instance = await createInstance(testDate, parentTaskData, parentId, companyObjId, endDateTime);
+        const instance = await createInstance(testDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
         if (instance) instances.push(instance);
       }
       currentDate.setMonth(currentDate.getMonth() + 1);
@@ -100,6 +140,7 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
   console.log(`Generated ${instances.length} recurring instances for task ${parentId} (mode: ${generateNextOnly ? 'next only' : 'multi'})`);
   return instances;
 }
+
 
 // Helper to calculate the NEXT scheduled date (unchanged - future only)
 function calculateNextInstanceDate(parentTask, currentDate) {
@@ -158,26 +199,56 @@ function calculateNextInstanceDate(parentTask, currentDate) {
   return null;  
 }
 
-// createInstance helper (unchanged)
-async function createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime) {
+// UPDATED: createInstance (NEW: Check for holiday and shift to one day before)
+async function createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays) {
   try {
+    let workingDate = new Date(instanceDate);  // Copy for potential shift
+    workingDate.setHours(0, 0, 0, 0);  // Normalize
+    
     const now = new Date();
     now.setSeconds(0, 0);  
-    if (instanceDate < now) {
-      console.log(`Skipping past date: ${instanceDate.toISOString()}`);
+    if (workingDate < now) {
+      console.log(`Skipping past date: ${workingDate.toISOString()}`);
       return null;
     }
     
-    const startDt = new Date(instanceDate);
+    // NEW: Holiday check and shift (using your schema's date/name)
+    const originalDate = new Date(workingDate);  // Keep original for logging
+    if (isHoliday(workingDate, holidays)) {
+      const holidayName = holidays.find(h => isHoliday(workingDate, [h]))?.name || 'Unknown Holiday';
+      console.log(`Holiday detected on ${workingDate.toISOString()}: ${holidayName}`);
+      workingDate.setDate(workingDate.getDate() - 1);  // Shift to one day before
+      workingDate.setHours(0, 0, 0, 0);  // Re-normalize
+      console.log(`Shifted instance from ${originalDate.toISOString()} to ${workingDate.toISOString()}`);
+      
+      // Re-check if shifted date is past (skip if so)
+      if (workingDate < now) {
+        console.log(`Shifted date is in past, skipping instance`);
+        return null;
+      }
+      
+      // Optional: If you want recursive shifting (until non-holiday), uncomment below
+      // while (isHoliday(workingDate, holidays)) {
+      //   workingDate.setDate(workingDate.getDate() - 1);
+      //   workingDate.setHours(0, 0, 0, 0);
+      //   if (workingDate < now) {
+      //     console.log(`All shifted dates are past, skipping instance`);
+      //     return null;
+      //   }
+      // }
+      // console.log(`Final shifted date after avoiding holidays: ${workingDate.toISOString()}`);
+    }
+    
+    const startDt = new Date(workingDate);  // Use shifted date
     startDt.setHours(
-      parentTaskData.startDateTime.getHours(),
-      parentTaskData.startDateTime.getMinutes(),
+      parentTaskData.startDateTime.getHours(),  // FIXED: Use startDateTime
+      parentTaskData.startDateTime.getMinutes(),  // FIXED: Use startDateTime
       0, 0
     );
-    const endDt = new Date(instanceDate);
+    const endDt = new Date(workingDate);
     endDt.setHours(
-      parentTaskData.endDateTime.getHours(),
-      parentTaskData.endDateTime.getMinutes(),
+      parentTaskData.endDateTime.getHours(),  // FIXED: Use endDateTime
+      parentTaskData.endDateTime.getMinutes(),  // FIXED: Use endDateTime
       59, 999
     );
     
@@ -192,20 +263,21 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
       return null;
     }
     
+    // UPDATED: Check for existing using shifted date (prevent duplicates on shifted dates)
     const existing = await Task.findOne({
       parentTask: parentId,
       startDateTime: startDt,
       company: companyObjId
     });
     if (existing) {
-      console.log(`Existing instance found: ${startDt.toISOString()}`);
+      console.log(`Existing instance found (shifted date): ${startDt.toISOString()}`);
       return existing;
     }
     
     if (parentTaskData.repeatFrequency === 'monthly') {
-      const expectedDay = instanceDate.getDate();
+      const expectedDay = workingDate.getDate();  // Use shifted day for validation
       if (!parentTaskData.repeatDatesOfMonth.includes(expectedDay)) {
-        console.log(`Invalid monthly day ${expectedDay}`);
+        console.log(`Invalid monthly day after shift: ${expectedDay} (not in selected dates)`);
         return null;
       }
     }
@@ -231,13 +303,16 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
     });
     
     await instance.save();
-    console.log(`Created instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
+    const shiftMsg = isHoliday(originalDate, holidays) ? 'shifted ' : '';  // FIXED: Use originalDate
+    console.log(`Created ${shiftMsg}instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
     return instance;
   } catch (error) {
     console.error(`Error creating instance for ${instanceDate.toISOString()}:`, error);
     return null;
   }
 }
+
+
 
 // stopRecurrence (unchanged)
 exports.stopRecurrence = async (req, res) => {
@@ -275,6 +350,18 @@ exports.resumeRecurrence = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+
+// NEW: Check if a date is a holiday (compares YYYY-MM-DD to avoid time issues)
+function isHoliday(checkDate, holidays) {
+  const dateStr = checkDate.toISOString().split('T')[0];  // YYYY-MM-DD
+  return holidays.some(holiday => {
+    const holidayStr = holiday.date.toISOString().split('T')[0];
+    return dateStr === holidayStr;
+  });
+}
+
 
 // createTask (unchanged - saves only parent)
 exports.createTask = async (req, res) => {
@@ -481,42 +568,43 @@ exports.getAllTasks = async (req, res) => {
         });
       });
 
-      // NEW: If recurring and active, check if next future instance exists; generate if missing
-      if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
-        const now = new Date();
-        const nextDate = calculateNextInstanceDate(parent, now);
-        const endDate = new Date(parent.nextFinishDateTime);
+     // NEW: If recurring and active, check if next future instance exists; generate if missing
+if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
+  const now = new Date();
+  const nextDate = calculateNextInstanceDate(parent, now);  // FIXED: Use parent (aggregation object)
+  const endDate = new Date(parent.nextFinishDateTime);
 
-        if (nextDate && nextDate <= endDate) {
-          // Check if next instance already exists (by startDateTime)
-          const nextStartTime = new Date(nextDate);
-          nextStartTime.setHours(parent.startDateTime.getHours(), parent.startDateTime.getMinutes(), 0, 0);
-          
-          const nextExists = existingInstances.some(child => 
-            new Date(child.startDateTime).getTime() === nextStartTime.getTime()
-          );
+  if (nextDate && nextDate <= endDate) {
+    // Check if next instance already exists (by startDateTime)
+    const nextStartTime = new Date(nextDate);
+    nextStartTime.setHours(parent.startDateTime.getHours(), parent.startDateTime.getMinutes(), 0, 0);
+    
+    const nextExists = existingInstances.some(child => 
+      new Date(child.startDateTime).getTime() === nextStartTime.getTime()
+    );
 
-          if (!nextExists) {
-            console.log(`🔍 Generating missing next instance for parent ${parent._id} on ${nextStartTime.toISOString()}`);
-            const newInstances = await generateRecurringInstances(parent, companyStr, true);  // true = next only
-            if (newInstances.length > 0) {
-              // Add the new next instance to the list (fresh fetch not needed since just created)
-              const newChild = newInstances[0];
-              allTasks.push({
-                ...newChild,
-                isRecurringInstance: true,
-                parentTitle: parent.title,
-                isOverdue: false  // Future, so not overdue
-              });
-              console.log(`🔍 Added new next instance to response`);
-            }
-          } else {
-            console.log(`🔍 Next instance already exists for parent ${parent._id}`);
-          }
-        } else {
-          console.log(`🔍 No next instance needed for parent ${parent._id} (beyond end or invalid)`);
-        }
+    if (!nextExists) {
+      console.log(`🔍 Generating missing next instance for parent ${parent._id} on ${nextStartTime.toISOString()}`);
+      const newInstances = await generateRecurringInstances(parent.toObject(), companyStr, true);  // FIXED: Use .toObject() for plain data
+      if (newInstances.length > 0) {
+        // Add the new next instance to the list (fresh fetch not needed since just created)
+        const newChild = newInstances[0];
+        allTasks.push({
+          ...newChild,
+          isRecurringInstance: true,
+          parentTitle: parent.title,
+          isOverdue: false  // Future, so not overdue
+        });
+        console.log(`🔍 Added new next instance to response`);
       }
+    } else {
+      console.log(`🔍 Next instance already exists for parent ${parent._id}`);
+    }
+  } else {
+    console.log(`🔍 No next instance needed for parent ${parent._id} (beyond end or invalid)`);
+  }
+}
+
     }
 
     // Final sort: By startDateTime descending (recent/past first, then future)
@@ -561,31 +649,32 @@ exports.getTaskById = async (req, res) => {
       }));
       
       // NEW: Generate next if missing (similar to getAllTasks)
-      const now = new Date();
-      const nextDate = calculateNextInstanceDate(task.toObject(), now);
-      const endDate = new Date(task.nextFinishDateTime);
-      
-      if (task.recurrenceActive && nextDate && nextDate <= endDate) {
-        const nextStartTime = new Date(nextDate);
-        nextStartTime.setHours(task.startDateTime.getHours(), task.startDateTime.getMinutes(), 0, 0);
-        
-        const nextExists = recurringInstances.some(child => 
-          new Date(child.startDateTime).getTime() === nextStartTime.getTime()
-        );
-        
-        if (!nextExists) {
-          console.log(`🔍 Generating missing next instance for single task view ${id}`);
-          const newInstances = await generateRecurringInstances(task.toObject(), company, true);
-          if (newInstances.length > 0) {
-            const newChild = newInstances[0];
-            recurringInstances.push({
-              ...newChild,
-              isOverdue: false
-            });
-            recurringInstances.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
-          }
-        }
-      }
+const now = new Date();
+const nextDate = calculateNextInstanceDate(task.toObject(), now);  // FIXED: Use .toObject()
+const endDate = new Date(task.nextFinishDateTime);
+
+if (task.recurrenceActive && nextDate && nextDate <= endDate) {
+  const nextStartTime = new Date(nextDate);
+  nextStartTime.setHours(task.startDateTime.getHours(), task.startDateTime.getMinutes(), 0, 0);
+  
+  const nextExists = recurringInstances.some(child => 
+    new Date(child.startDateTime).getTime() === nextStartTime.getTime()
+  );
+  
+  if (!nextExists) {
+    console.log(`🔍 Generating missing next instance for single task view ${id}`);
+    const newInstances = await generateRecurringInstances(task.toObject(), company, true);  // FIXED: Use .toObject()
+    if (newInstances.length > 0) {
+      const newChild = newInstances[0];
+      recurringInstances.push({
+        ...newChild,
+        isOverdue: false
+      });
+      recurringInstances.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
+    }
+  }
+}
+
     }
     
     // Compute overdue for main task
@@ -801,9 +890,11 @@ exports.getCreditPointsTaskWise = async (req, res) => {
     const company = await getCompanyIdFromUser   (req.user);
 
     // Find tasks for company, select creditPoints and assignedTo
-    const tasks = await Task.find({ company })
-      .select('title creditPoints assignedTo')
-      .populate('assignedTo', 'firstName lastName role');
+    const tasks = await Task.find({ company: new mongoose.Types.ObjectId(company) })  // FIXED: Cast to ObjectId
+  .select('title creditPoints assignedTo')
+  .populate('assignedTo', 'firstName lastName role');
+
+
 
     // Format response: each task with creditPoints and assigned employees
     const result = tasks.map(task => ({
@@ -833,7 +924,7 @@ exports.getCreditPointsEmployeeWise = async (req, res) => {
     // Aggregate tasks grouped by assignedTo employees
     // Since assignedTo is an array, unwind it first
     const aggregation = await Task.aggregate([
-      { $match: { company: mongoose.Types.ObjectId(company) } },
+   { $match: { company: new mongoose.Types.ObjectId(company) } }, 
       { $unwind: '$assignedTo' },
       {
         $group: {
@@ -867,18 +958,4 @@ exports.getCreditPointsEmployeeWise = async (req, res) => {
     console.error('Get credit points employee-wise error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
-};
-
-module.exports = {
-  createTask,
-  getAllTasks,
-  getTaskById,
-  updateTask,
-  deleteTask,
-  stopRecurrence,
-  resumeRecurrence,
-  shiftedTask,
-  getTasksByEmployeeId,
-  getCreditPointsTaskWise,
-  getCreditPointsEmployeeWise
 };
