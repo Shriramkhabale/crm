@@ -585,7 +585,10 @@ if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
 
     if (!nextExists) {
       console.log(`🔍 Generating missing next instance for parent ${parent._id} on ${nextStartTime.toISOString()}`);
-      const newInstances = await generateRecurringInstances(parent.toObject(), companyStr, true);  // FIXED: Use .toObject() for plain data
+      // const newInstances = await generateRecurringInstances(parent.toObject(), companyStr, true);  // FIXED: Use .toObject() for plain data
+     
+      const newInstances = await generateRecurringInstances(parent, companyStr, true);
+     
       if (newInstances.length > 0) {
         // Add the new next instance to the list (fresh fetch not needed since just created)
         const newChild = newInstances[0];
@@ -663,7 +666,8 @@ if (task.recurrenceActive && nextDate && nextDate <= endDate) {
   
   if (!nextExists) {
     console.log(`🔍 Generating missing next instance for single task view ${id}`);
-    const newInstances = await generateRecurringInstances(task.toObject(), company, true);  // FIXED: Use .toObject()
+    // const newInstances = await generateRecurringInstances(task.toObject(), company, true);  // FIXED: Use .toObject()
+    const newInstances = await generateRecurringInstances(task, company, true);
     if (newInstances.length > 0) {
       const newChild = newInstances[0];
       recurringInstances.push({
