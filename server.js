@@ -57,7 +57,8 @@ const allowedOrigins = [
   'http://localhost:3001',
   'http://localhost:3002',
   'https://digitalschool.cloud',
-  'https://udaanjobs.com'
+  'https://udaanjobs.com',
+  'https://softwarecompanyinsangli.online'
 ];
 
 app.use(cors({
