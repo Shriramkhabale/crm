@@ -31,11 +31,14 @@ exports.createMilestone = async (req, res) => {
     }
 
     // NEW: Validate assignedTeamMember is in project's teamMembers (if provided)
-    if (assignedTeamMember) {
-      if (!proj.teamMembers.includes(assignedTeamMember)) {
-        return res.status(400).json({ message: 'Assigned team member must be one of the project\'s team members' });
-      }
-    }
+    // Validate assignedTeamMember is in project's teamMembers (if provided)
+if (assignedTeamMember && assignedTeamMember.length > 0) {
+  const invalidMembers = assignedTeamMember.filter(m => !proj.teamMembers.includes(m));
+  if (invalidMembers.length > 0) {
+    return res.status(400).json({ message: 'All assigned members must be part of the project team' });
+  }
+}
+
 
     const milestone = new Milestone({
       title,
@@ -134,16 +137,18 @@ exports.updateMilestone = async (req, res) => {
 
     // NEW: Handle assignedTeamMember update
     if (updates.assignedTeamMember !== undefined) {
-      if (updates.assignedTeamMember) {
-        // Fetch current project (or updated one)
-        const currentProject = updates.project || milestone.project;
-        const proj = await ProjectMgnt.findById(currentProject).select('teamMembers');
-        if (!proj || !proj.teamMembers.includes(updates.assignedTeamMember)) {
-          return res.status(400).json({ message: 'Assigned team member must be one of the project\'s team members' });
-        }
-      }
-      milestone.assignedTeamMember = updates.assignedTeamMember;
+  if (updates.assignedTeamMember && updates.assignedTeamMember.length > 0) {
+    const currentProject = updates.project || milestone.project;
+    const proj = await ProjectMgnt.findById(currentProject).select('teamMembers');
+    
+    const invalidMembers = updates.assignedTeamMember.filter(m => !proj.teamMembers.includes(m));
+    if (invalidMembers.length > 0) {
+      return res.status(400).json({ message: 'All assigned members must be part of the project team' });
     }
+  }
+  milestone.assignedTeamMember = updates.assignedTeamMember;
+}
+
 
     // NEW: Handle nextFollowUp update
     if (updates.nextFollowUp !== undefined) {

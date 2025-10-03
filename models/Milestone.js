@@ -8,8 +8,9 @@ const milestoneSchema = new mongoose.Schema({
   description: { type: String },  // NEW: Description
   dueDate: { type: Date, required: true },
   status: { type: String },  // e.g., "Pending", "In Progress", "Completed"
-  assignedTeamMember: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },  // NEW: From project's teamMembers
-  nextFollowUp: { type: Date },  // NEW: Next follow-up date-time (ISO)
+assignedTeamMember: [
+    { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' } // ✅ multiple members
+  ],  nextFollowUp: { type: Date },  // NEW: Next follow-up date-time (ISO)
   company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true }
 }, { timestamps: true });
 
