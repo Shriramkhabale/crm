@@ -61,6 +61,8 @@ exports.createEmployee = async (req, res) => {
       aadharNumber,
       panNumber,
       userUpi,
+      pfPercentage,
+      esicPercentage,
       paidLeaves,
       weeklyHoliday,
       address,
@@ -135,6 +137,8 @@ exports.createEmployee = async (req, res) => {
       aadharNumber,
       panNumber,
       userUpi,
+      pfPercentage,
+      esicPercentage,
       paidLeaves,
       weeklyHoliday,
       address,
@@ -178,6 +182,8 @@ exports.updateEmployee = async (req, res) => {
       aadharNumber,
       panNumber,
       userUpi,
+      pfPercentage,
+      esicPercentage,
       weeklyHoliday,
       paidLeaves,
       address,
@@ -216,6 +222,9 @@ exports.updateEmployee = async (req, res) => {
     if (aadharNumber) employee.aadharNumber = aadharNumber;
     if (panNumber) employee.panNumber = panNumber;
     if (userUpi) employee.userUpi = userUpi;
+    if (pfPercentage) employee.pfPercentage = pfPercentage;
+    if (esicPercentage) employee.esicPercentage = esicPercentage;
+
     if (weeklyHoliday) employee.weeklyHoliday = weeklyHoliday;
     if (paidLeaves) employee.paidLeaves = paidLeaves;
     if (address) employee.address = address;

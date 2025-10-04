@@ -17,6 +17,8 @@ const employeeSchema = new mongoose.Schema({
   aadharNumber: { type: String },                       // Aadhar Number
   panNumber: { type: String },                          // Pan Number
   userUpi: { type: String },                            // User Upi
+  pfPercentage: { type: String },                            
+  esicPercentage: { type: String },                            
   weeklyHoliday: [{
     type: String,
     enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
