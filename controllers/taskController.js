@@ -45,64 +45,55 @@ function isHoliday(checkDate, holidays) {
 
 const LOOKAHEAD_DAYS = 3;
 
-async function generateRecurringInstances(parentTaskData, companyId) {
+async function generateRecurringInstances(parentTaskData, companyId, generateNextOnly = false) {
   if (!parentTaskData.repeat || !parentTaskData.recurrenceActive || !parentTaskData.nextFinishDateTime) {
     console.log('Skipping generation: repeat disabled or no end date');
     return [];
   }
 
-  const instances = [];
-  const startDate = new Date(parentTaskData.startDateTime);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(parentTaskData.nextFinishDateTime);
-  endDate.setHours(23, 59, 59, 999);
-
   const companyObjId = new mongoose.Types.ObjectId(companyId);
+  const holidays = await getHolidaysForPeriod(companyId, new Date(), new Date(parentTaskData.nextFinishDateTime));
 
-  // Fetch holidays for the entire period
-  const holidays = await getHolidaysForPeriod(companyId, startDate, endDate);
-
-  let currentDate = new Date(startDate);
-  let iterations = 0;
-  const maxIterations = 1000; // Safety limit
-
-  while (currentDate <= endDate && iterations < maxIterations) {
-    iterations++;
-
-    let shouldCreate = false;
-
-    if (parentTaskData.repeatFrequency === 'daily') {
-      shouldCreate = true;
-    } else if (parentTaskData.repeatFrequency === 'weekly') {
-      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
-      shouldCreate = parentTaskData.repeatDaysOfWeek.includes(dayName);
-    } else if (parentTaskData.repeatFrequency === 'monthly') {
-      const dayNum = currentDate.getDate();
-      shouldCreate = parentTaskData.repeatDatesOfMonth.includes(dayNum);
+  if (generateNextOnly) {
+    // Calculate next instance date after now
+    const now = new Date();
+    const nextDate = calculateNextInstanceDate(parentTaskData, now);
+    if (!nextDate) {
+      console.log('No next date calculated');
+      return [];
     }
 
-    if (shouldCreate) {
-      const instance = await createInstance(currentDate, parentTaskData, parentTaskData._id, companyObjId, endDate, holidays);
-      if (instance) instances.push(instance);
+    const endDate = new Date(parentTaskData.nextFinishDateTime);
+    if (nextDate > endDate) {
+      console.log('Next date beyond recurrence end date');
+      return [];
     }
 
-    // Increment date by 1 day for daily and weekly
-    if (parentTaskData.repeatFrequency === 'daily' || parentTaskData.repeatFrequency === 'weekly') {
-      currentDate.setDate(currentDate.getDate() + 1);
-    } else if (parentTaskData.repeatFrequency === 'monthly') {
-      // For monthly, increment month and reset date to 1
-      currentDate.setMonth(currentDate.getMonth() + 1);
-      currentDate.setDate(1);
+    // Check if instance already exists
+    const startDt = new Date(nextDate);
+    startDt.setHours(parentTaskData.startDateTime.getHours(), parentTaskData.startDateTime.getMinutes(), 0, 0);
+
+    const existing = await Task.findOne({
+      parentTask: parentTaskData._id,
+      startDateTime: startDt,
+      company: companyObjId
+    });
+
+    if (existing) {
+      console.log('Next instance already exists:', startDt.toISOString());
+      return [];
     }
+
+    // Create instance
+    const instance = await createInstance(nextDate, parentTaskData, parentTaskData._id, companyObjId, endDate, holidays);
+    return instance ? [instance] : [];
+  } else {
+    // Original logic to generate all instances between start and end dates (if you want)
+    // But per your requirement, you probably won't call this without generateNextOnly=true
+    return [];
   }
-
-  if (iterations >= maxIterations) {
-    console.warn('Max iterations reached in generateRecurringInstances');
-  }
-
-  console.log(`Generated ${instances.length} recurring instances for task ${parentTaskData._id}`);
-  return instances;
 }
+
 
 
 
@@ -488,72 +479,27 @@ exports.getAllTasks = async (req, res) => {
 
     console.log('🔍 Aggregation results length:', aggregation.length);  
 
-    // UPDATED: For each recurring parent, check/generate next future instance if missing
     // (Past instances are already fetched via lookup; only add future if needed)
     const allTasks = [];
-    for (const parent of aggregation) {
-      // Add parent to list
-      allTasks.push({
-        ...parent,
-        isRecurringInstance: false,  
-        isOverdue: parent.isOverdue
-      });
 
-      // FIXED: Fetch all existing instances (past + future) from lookup
-      const existingInstances = parent.recurringInstances || [];
-      console.log(`🔍 Parent ${parent._id}: Found ${existingInstances.length} existing instances`);
+      for (const parent of aggregation) {
+        allTasks.push({ ...parent, isRecurringInstance: false, isOverdue: parent.isOverdue });
 
-      // Add all existing instances (past + any future)
-      existingInstances.forEach(child => {
-        allTasks.push({
-          ...child,
-          isRecurringInstance: true,
-          parentTitle: parent.title,  
-          isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
+        const existingInstances = parent.recurringInstances || [];
+        existingInstances.forEach(child => {
+          allTasks.push({ ...child, isRecurringInstance: true, parentTitle: parent.title, isOverdue: child.endDateTime < new Date() && child.status !== 'completed' });
         });
-      });
 
-     // NEW: If recurring and active, check if next future instance exists; generate if missing
-if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
-  const now = new Date();
-  const nextDate = calculateNextInstanceDate(parent, now);  // FIXED: Use parent (aggregation object)
-  const endDate = new Date(parent.nextFinishDateTime);
-
-  if (nextDate && nextDate <= endDate) {
-    // Check if next instance already exists (by startDateTime)
-    const nextStartTime = new Date(nextDate);
-    nextStartTime.setHours(parent.startDateTime.getHours(), parent.startDateTime.getMinutes(), 0, 0);
-    
-    const nextExists = existingInstances.some(child => 
-      new Date(child.startDateTime).getTime() === nextStartTime.getTime()
-    );
-
-    if (!nextExists) {
-      console.log(`🔍 Generating missing next instance for parent ${parent._id} on ${nextStartTime.toISOString()}`);
-      // const newInstances = await generateRecurringInstances(parent.toObject(), companyStr, true);  // FIXED: Use .toObject() for plain data
-     
-      const newInstances = await generateRecurringInstances(parent, companyStr, true);
-     
-      if (newInstances.length > 0) {
-        // Add the new next instance to the list (fresh fetch not needed since just created)
-        const newChild = newInstances[0];
-        allTasks.push({
-          ...newChild,
-          isRecurringInstance: true,
-          parentTitle: parent.title,
-          isOverdue: false  // Future, so not overdue
-        });
-        console.log(`🔍 Added new next instance to response`);
+        if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
+          const newInstances = await generateRecurringInstances(parent, companyStr, true);
+          if (newInstances.length > 0) {
+            const newChild = newInstances[0];
+            allTasks.push({ ...newChild, isRecurringInstance: true, parentTitle: parent.title, isOverdue: false });
+            console.log(`Added new next instance for parent ${parent._id}`);
+          }
+        }
       }
-    } else {
-      console.log(`🔍 Next instance already exists for parent ${parent._id}`);
-    }
-  } else {
-    console.log(`🔍 No next instance needed for parent ${parent._id} (beyond end or invalid)`);
-  }
-}
 
-    }
 
     // Final sort: By startDateTime descending (recent/past first, then future)
     allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
@@ -581,50 +527,22 @@ exports.getTaskById = async (req, res) => {
     
     // UPDATED: Fetch ALL instances (past + future) if parent
     let recurringInstances = [];
-    if (task.repeat) {
-      recurringInstances = await Task.find({ parentTask: id, company })
-        .populate('assignedTo', 'firstName role')
-        .populate('createdBy', 'firstName role')
-        .sort({ startDateTime: 1 });  // Chronological order (past to future)
-      
-      // FIXED: No date filter - includes all past/future
-      console.log(`🔍 Fetched ${recurringInstances.length} instances for task ${id} (all past + future)`);
-      
-      // Compute overdue for all instances
-      recurringInstances = recurringInstances.map(child => ({
-        ...child.toObject(),
-        isOverdue: child.endDateTime < new Date() && child.status !== 'completed',
-      }));
-      
-      // NEW: Generate next if missing (similar to getAllTasks)
-const now = new Date();
-const nextDate = calculateNextInstanceDate(task.toObject(), now);  // FIXED: Use .toObject()
-const endDate = new Date(task.nextFinishDateTime);
+  if (task.repeat) {
+  recurringInstances = await Task.find({ parentTask: id, company })
+    .populate('assignedTo', 'firstName role')
+    .populate('createdBy', 'firstName role')
+    .sort({ startDateTime: 1 });
 
-if (task.recurrenceActive && nextDate && nextDate <= endDate) {
-  const nextStartTime = new Date(nextDate);
-  nextStartTime.setHours(task.startDateTime.getHours(), task.startDateTime.getMinutes(), 0, 0);
-  
-  const nextExists = recurringInstances.some(child => 
-    new Date(child.startDateTime).getTime() === nextStartTime.getTime()
-  );
-  
-  if (!nextExists) {
-    console.log(`🔍 Generating missing next instance for single task view ${id}`);
-    // const newInstances = await generateRecurringInstances(task.toObject(), company, true);  // FIXED: Use .toObject()
+  // Generate next instance if missing
+  if (task.recurrenceActive && task.nextFinishDateTime) {
     const newInstances = await generateRecurringInstances(task, company, true);
     if (newInstances.length > 0) {
-      const newChild = newInstances[0];
-      recurringInstances.push({
-        ...newChild,
-        isOverdue: false
-      });
+      recurringInstances.push({ ...newInstances[0], isOverdue: false });
       recurringInstances.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
     }
   }
 }
 
-    }
     
     // Compute overdue for main task
     const taskWithOverdue = { ...task.toObject(), isOverdue: task.endDateTime < new Date() && task.status !== 'completed' };

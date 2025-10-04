@@ -19,6 +19,7 @@ router.post(
 
 router.get('/tasks', authMiddleware, taskController.getAllTasks);
 router.get('/tasks/:id', authMiddleware, taskController.getTaskById);
+
 router.put(
   '/tasks/:id',
   authMiddleware,
