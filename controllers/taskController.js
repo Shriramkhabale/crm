@@ -45,101 +45,65 @@ function isHoliday(checkDate, holidays) {
 
 const LOOKAHEAD_DAYS = 3;
 
-async function generateRecurringInstances(parentTaskData, companyId, generateNextOnly = false) {
+async function generateRecurringInstances(parentTaskData, companyId) {
   if (!parentTaskData.repeat || !parentTaskData.recurrenceActive || !parentTaskData.nextFinishDateTime) {
     console.log('Skipping generation: repeat disabled or no end date');
-    return [];  
+    return [];
   }
-  
+
   const instances = [];
-  const endDateTime = new Date(parentTaskData.nextFinishDateTime);
-  const now = new Date();
-  now.setSeconds(0, 0, 0);  
-  
-  const parentId = parentTaskData._id;
+  const startDate = new Date(parentTaskData.startDateTime);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(parentTaskData.nextFinishDateTime);
+  endDate.setHours(23, 59, 59, 999);
+
   const companyObjId = new mongoose.Types.ObjectId(companyId);
-  
-  // NEW: Holiday handling - Fetch holidays for the relevant period
-  let periodStart = new Date(now);
-  let periodEnd;
-  if (generateNextOnly) {
-    // For next only: Fetch for next 30 days (buffer)
-    periodEnd = new Date(now);
-    periodEnd.setDate(periodEnd.getDate() + 30);
-  } else {
-    // For multi: Lookahead period
-    periodEnd = new Date(now);
-    periodEnd.setDate(periodEnd.getDate() + LOOKAHEAD_DAYS);
-  }
-  if (periodEnd > endDateTime) periodEnd = endDateTime;
-  const holidays = await getHolidaysForPeriod(companyId, periodStart, periodEnd);
-  
-  if (generateNextOnly) {
-    const nextInstanceDate = calculateNextInstanceDate(parentTaskData, now);
-    if (!nextInstanceDate || nextInstanceDate > endDateTime) {
-      console.log('No next instance needed (beyond end date or no valid date)');
-      return [];
-    }
-    
-    console.log(`Generating only next instance on: ${nextInstanceDate.toISOString()}`);
-    const instance = await createInstance(nextInstanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
-    if (instance) instances.push(instance);
-    return instances;
-  }
-  
-  // Multi-mode (loop with holiday check in createInstance)
-  let currentDate = new Date(now);  
-  currentDate.setHours(0, 0, 0, 0);  
-  const lookaheadEnd = new Date(currentDate);
-  lookaheadEnd.setDate(lookaheadEnd.getDate() + LOOKAHEAD_DAYS);
-  if (lookaheadEnd > endDateTime) lookaheadEnd = endDateTime;
-  
+
+  // Fetch holidays for the entire period
+  const holidays = await getHolidaysForPeriod(companyId, startDate, endDate);
+
+  let currentDate = new Date(startDate);
   let iterations = 0;
-  const maxIterations = 100;
-  
-  while (currentDate <= lookaheadEnd && iterations < maxIterations) {
+  const maxIterations = 1000; // Safety limit
+
+  while (currentDate <= endDate && iterations < maxIterations) {
     iterations++;
-    let instanceDate = new Date(currentDate);
-    instanceDate.setHours(0, 0, 0, 0);
-    
+
+    let shouldCreate = false;
+
     if (parentTaskData.repeatFrequency === 'daily') {
-      const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
-      if (instance) instances.push(instance);
-      currentDate.setDate(currentDate.getDate() + 1);
-      
+      shouldCreate = true;
     } else if (parentTaskData.repeatFrequency === 'weekly') {
-      const currentDayName = instanceDate.toLocaleDateString('en-US', { weekday: 'long' });
-      if (parentTaskData.repeatDaysOfWeek.includes(currentDayName)) {
-        const instance = await createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
-        if (instance) instances.push(instance);
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-      
+      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+      shouldCreate = parentTaskData.repeatDaysOfWeek.includes(dayName);
     } else if (parentTaskData.repeatFrequency === 'monthly') {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      for (const dayNum of parentTaskData.repeatDatesOfMonth) {
-        const testDate = new Date(year, month, dayNum);
-        if (isNaN(testDate.getTime()) || testDate.getMonth() !== month || testDate > lookaheadEnd) {
-          console.log(`Skipping invalid monthly date: ${year}-${month + 1}-${dayNum}`);
-          continue;
-        }
-        const instance = await createInstance(testDate, parentTaskData, parentId, companyObjId, endDateTime, holidays);
-        if (instance) instances.push(instance);
-      }
+      const dayNum = currentDate.getDate();
+      shouldCreate = parentTaskData.repeatDatesOfMonth.includes(dayNum);
+    }
+
+    if (shouldCreate) {
+      const instance = await createInstance(currentDate, parentTaskData, parentTaskData._id, companyObjId, endDate, holidays);
+      if (instance) instances.push(instance);
+    }
+
+    // Increment date by 1 day for daily and weekly
+    if (parentTaskData.repeatFrequency === 'daily' || parentTaskData.repeatFrequency === 'weekly') {
+      currentDate.setDate(currentDate.getDate() + 1);
+    } else if (parentTaskData.repeatFrequency === 'monthly') {
+      // For monthly, increment month and reset date to 1
       currentDate.setMonth(currentDate.getMonth() + 1);
       currentDate.setDate(1);
-      if (currentDate.getDate() !== 1) currentDate.setDate(1);
     }
   }
-  
+
   if (iterations >= maxIterations) {
     console.warn('Max iterations reached in generateRecurringInstances');
   }
-  
-  console.log(`Generated ${instances.length} recurring instances for task ${parentId} (mode: ${generateNextOnly ? 'next only' : 'multi'})`);
+
+  console.log(`Generated ${instances.length} recurring instances for task ${parentTaskData._id}`);
   return instances;
 }
+
 
 
 // Helper to calculate the NEXT scheduled date (unchanged - future only)
@@ -202,86 +166,65 @@ function calculateNextInstanceDate(parentTask, currentDate) {
 // UPDATED: createInstance (NEW: Check for holiday and shift to one day before)
 async function createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays) {
   try {
-    let workingDate = new Date(instanceDate);  // Copy for potential shift
-    workingDate.setHours(0, 0, 0, 0);  // Normalize
-    
+    let workingDate = new Date(instanceDate);
+    workingDate.setHours(0, 0, 0, 0);
+
     const now = new Date();
-    now.setSeconds(0, 0);  
+    now.setSeconds(0, 0, 0, 0);
+
+    // Skip if instance date is before now (past)
     if (workingDate < now) {
       console.log(`Skipping past date: ${workingDate.toISOString()}`);
       return null;
     }
-    
-    // NEW: Holiday check and shift (using your schema's date/name)
-    const originalDate = new Date(workingDate);  // Keep original for logging
-    if (isHoliday(workingDate, holidays)) {
-      const holidayName = holidays.find(h => isHoliday(workingDate, [h]))?.name || 'Unknown Holiday';
-      console.log(`Holiday detected on ${workingDate.toISOString()}: ${holidayName}`);
-      workingDate.setDate(workingDate.getDate() - 1);  // Shift to one day before
-      workingDate.setHours(0, 0, 0, 0);  // Re-normalize
-      console.log(`Shifted instance from ${originalDate.toISOString()} to ${workingDate.toISOString()}`);
-      
-      // Re-check if shifted date is past (skip if so)
+
+    const taskStartDate = new Date(parentTaskData.startDateTime);
+    taskStartDate.setHours(0, 0, 0, 0);
+
+    // Recursive shift for holidays and before task start date
+    while (isHoliday(workingDate, holidays) || workingDate < taskStartDate) {
+      workingDate.setDate(workingDate.getDate() - 1);
+      workingDate.setHours(0, 0, 0, 0);
+
       if (workingDate < now) {
         console.log(`Shifted date is in past, skipping instance`);
         return null;
       }
-      
-      // Optional: If you want recursive shifting (until non-holiday), uncomment below
-      // while (isHoliday(workingDate, holidays)) {
-      //   workingDate.setDate(workingDate.getDate() - 1);
-      //   workingDate.setHours(0, 0, 0, 0);
-      //   if (workingDate < now) {
-      //     console.log(`All shifted dates are past, skipping instance`);
-      //     return null;
-      //   }
-      // }
-      // console.log(`Final shifted date after avoiding holidays: ${workingDate.toISOString()}`);
     }
-    
-    const startDt = new Date(workingDate);  // Use shifted date
-    startDt.setHours(
-      parentTaskData.startDateTime.getHours(),  // FIXED: Use startDateTime
-      parentTaskData.startDateTime.getMinutes(),  // FIXED: Use startDateTime
-      0, 0
-    );
+
+    // Set start and end times based on parent task
+    const startDt = new Date(workingDate);
+    startDt.setHours(parentTaskData.startDateTime.getHours(), parentTaskData.startDateTime.getMinutes(), 0, 0);
+
     const endDt = new Date(workingDate);
-    endDt.setHours(
-      parentTaskData.endDateTime.getHours(),  // FIXED: Use endDateTime
-      parentTaskData.endDateTime.getMinutes(),  // FIXED: Use endDateTime
-      59, 999
-    );
-    
-    if (parentTaskData.repeatFrequency === 'daily') {
-      endDt.setDate(startDt.getDate());
-      endDt.setMonth(startDt.getMonth());
-      endDt.setFullYear(startDt.getFullYear());
-    }
-    
+    endDt.setHours(parentTaskData.endDateTime.getHours(), parentTaskData.endDateTime.getMinutes(), 59, 999);
+
     if (endDt > endDateTime || startDt > endDateTime) {
-      console.log(`Skipping beyond end: ${startDt.toISOString()}`);
+      console.log(`Skipping beyond end date: ${startDt.toISOString()}`);
       return null;
     }
-    
-    // UPDATED: Check for existing using shifted date (prevent duplicates on shifted dates)
+
+    // Check for existing instance to prevent duplicates
     const existing = await Task.findOne({
       parentTask: parentId,
       startDateTime: startDt,
       company: companyObjId
     });
     if (existing) {
-      console.log(`Existing instance found (shifted date): ${startDt.toISOString()}`);
+      console.log(`Existing instance found for date: ${startDt.toISOString()}`);
       return existing;
     }
-    
+
+    // For monthly recurrence, validate day after shift
     if (parentTaskData.repeatFrequency === 'monthly') {
-      const expectedDay = workingDate.getDate();  // Use shifted day for validation
+      const expectedDay = workingDate.getDate();
       if (!parentTaskData.repeatDatesOfMonth.includes(expectedDay)) {
         console.log(`Invalid monthly day after shift: ${expectedDay} (not in selected dates)`);
         return null;
       }
     }
-    
+
+    // Create new recurring instance
     const instance = new Task({
       title: parentTaskData.title,
       description: parentTaskData.description,
@@ -301,10 +244,12 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
       isRecurringInstance: true,
       recurrenceActive: parentTaskData.recurrenceActive
     });
-    
+
     await instance.save();
-    const shiftMsg = isHoliday(originalDate, holidays) ? 'shifted ' : '';  // FIXED: Use originalDate
+
+    const shiftMsg = isHoliday(instanceDate, holidays) ? 'shifted ' : '';
     console.log(`Created ${shiftMsg}instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
+
     return instance;
   } catch (error) {
     console.error(`Error creating instance for ${instanceDate.toISOString()}:`, error);
