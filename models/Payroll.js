@@ -9,16 +9,14 @@ const payrollSchema = new mongoose.Schema({
 
   totalWorkingDays: { type: Number, default: 0 },
   totalHalfDays: { type: Number, default: 0 },
-  paidLeaves: { type: Number, default: 0 },  // Paid leaves (no deduction)
-  holidayCount: { type: Number, default: 0 },  // Company + weekly holidays (no work expected)
+  paidLeaves: { type: Number, default: 0 },  
+  holidayCount: { type: Number, default: 0 },  
 
-  // UPDATED: Dynamic deductions as array of {type, amount}
   deductions: [{
     type: { type: String, required: true, trim: true, minlength: 1 }, // e.g., "Tax", "Custom Penalty"
     amount: { type: Number, required: true, min: 0 } // Positive amount (subtract ed in netSalary)
   }],
 
-  // UPDATED: Dynamic incomes as array of {type, amount}
   incomes: [{
     type: { type: String, required: true, trim: true, minlength: 1 }, // e.g., "Bonus", "Overtime"
     amount: { type: Number, required: true, min: 0 } // Positive amount (added to netSalary)

@@ -1,6 +1,8 @@
 const Employee = require('../models/Employee');
 const bcrypt = require('bcryptjs');
 const cloudinary = require('../config/cloudinaryConfig');  // For deletion
+const Leave = require('../models/Leave');  // Add import
+const mongoose = require('mongoose');  // For validation
 
 // NEW: Helper to extract publicId from Cloudinary URL (for fixed images)
 const extractPublicIdFromUrl = (url) => {
@@ -457,3 +459,121 @@ exports.deleteEmployee = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+// NEW: Get employee's leave counts (allocated, taken, remaining per type)
+exports.getEmployeeLeaveCounts = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { includeUnpaid = false } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({ message: 'Invalid employee ID' });
+    }
+
+    const employee = await Employee.findById(employeeId).populate('company', 'name');
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    // 1. Get allocated leave types from employee.paidLeaves
+    // Map: { lowerCaseType: { type: originalType, allocated: count } }
+    const allocatedMap = {};
+    employee.paidLeaves.forEach(pl => {
+      allocatedMap[pl.type.toLowerCase()] = { type: pl.type, allocated: pl.count };
+    });
+
+    // 2. Get all paid leaves (approved/partially approved) for employee
+    const paidLeaves = await Leave.find({
+      employee: employeeId,
+      leaveType: { $ne: 'unpaid' },
+      status: { $in: ['Approved', 'Partially Approved'] }
+    }).select('leaveType approvedDates fromDate toDate status').lean();
+
+    // 3. Aggregate taken days by leaveType (case-insensitive)
+    const takenMap = {};
+    paidLeaves.forEach(leave => {
+      const typeKey = leave.leaveType.toLowerCase();
+      let days = 0;
+      if (leave.status === 'Approved') {
+        const from = new Date(leave.fromDate);
+        const to = new Date(leave.toDate);
+        days = Math.ceil((to - from) / (1000 * 60 * 60 * 24)) + 1;
+      } else if (leave.status === 'Partially Approved' && leave.approvedDates) {
+        days = leave.approvedDates.length;
+      }
+      if (days > 0) {
+        takenMap[typeKey] = (takenMap[typeKey] || 0) + days;
+      }
+    });
+
+    // 4. Combine all leave types (union of allocated and taken)
+    const allTypesSet = new Set([
+      ...Object.keys(allocatedMap),
+      ...Object.keys(takenMap)
+    ]);
+
+    // 5. Build leaveCounts array with allocated, taken, remaining
+    const leaveCounts = [];
+    allTypesSet.forEach(typeKey => {
+      const allocatedEntry = allocatedMap[typeKey];
+      const allocated = allocatedEntry ? allocatedEntry.allocated : 0;
+      const originalType = allocatedEntry ? allocatedEntry.type : typeKey;  // Use original casing if allocated, else lowercase key
+      const taken = takenMap[typeKey] || 0;
+      const remaining = Math.max(0, allocated - taken);
+
+      leaveCounts.push({
+        type: originalType,
+        allocated,
+        taken,
+        remaining
+      });
+    });
+
+    // 6. Totals
+    const totalAllocated = leaveCounts.reduce((sum, lc) => sum + lc.allocated, 0);
+    const totalTaken = leaveCounts.reduce((sum, lc) => sum + lc.taken, 0);
+    const totalRemaining = leaveCounts.reduce((sum, lc) => sum + lc.remaining, 0);
+
+    // 7. Optional unpaid leaves summary
+    let unpaidSummary = null;
+    if (includeUnpaid === 'true') {
+      const unpaidLeaves = await Leave.find({
+        employee: employeeId,
+        leaveType: 'unpaid',
+        status: { $in: ['Approved', 'Partially Approved'] }
+      }).select('reason fromDate toDate status approvedDates').populate('company', 'name').sort({ appliedDate: -1 });
+
+      const totalUnpaidTaken = unpaidLeaves.reduce((sum, leave) => {
+        return sum + (leave.status === 'Approved'
+          ? Math.ceil((new Date(leave.toDate) - new Date(leave.fromDate)) / (1000 * 60 * 60 * 24)) + 1
+          : leave.approvedDates ? leave.approvedDates.length : 0);
+      }, 0);
+
+      unpaidSummary = {
+        unpaidLeaves,
+        totalUnpaidTaken
+      };
+    }
+
+    res.json({
+      message: 'Employee leave counts fetched successfully',
+      employeeId,
+      employee: {
+        teamMemberName: employee.teamMemberName,
+        company: employee.company ? employee.company.name : null
+      },
+      leaveCounts,
+      totals: {
+        totalAllocated,
+        totalTaken,
+        totalRemaining
+      },
+      unpaidSummary
+    });
+  } catch (error) {
+    console.error('Get employee leave counts error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+

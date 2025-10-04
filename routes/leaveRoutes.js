@@ -9,4 +9,7 @@ router.get('/:id', authMiddleware, leaveController.getLeaveById);
 router.put('/:id/status', authMiddleware, leaveController.updateLeaveStatus);
 router.delete('/:id', authMiddleware, leaveController.deleteLeave);
 
+router.get('/employee/:employeeId/summary', authMiddleware, leaveController.getEmployeeLeavesSummary);
+
+
 module.exports = router;

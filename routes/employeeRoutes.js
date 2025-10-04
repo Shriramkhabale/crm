@@ -44,6 +44,9 @@ router.get('/:id', employeeController.getEmployeeById);
 router.get('/company/:companyId', employeeController.getEmployeesByCompany);
 
 
+// NEW: Add this line (minimal addition)
+router.get('/:employeeId/leave-counts', employeeController.getEmployeeLeaveCounts);
+
 // Delete employee
 router.delete('/:id', employeeController.deleteEmployee);
 
