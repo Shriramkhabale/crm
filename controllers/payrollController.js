@@ -177,6 +177,32 @@ exports.generatePayroll = async (req, res) => {
 
     // Base salary (parse if string)
     const baseSalary = parseFloat(employee.salary) || 0;
+    const pfPercentage = parseFloat(employee.pfPercentage) || 0;  // Parse string to number
+    const esicPercentage = parseFloat(employee.esicPercentage) || 0;  // Parse string to number
+
+
+    // Calculate PF and ESIC amounts (only if percentage > 0)
+if (pfPercentage > 0) {
+  const pfAmount = (baseSalary * pfPercentage) / 100;
+  if (pfAmount > 0) {
+    deductionsArray.push({
+      type: 'PF (Provident Fund)',
+      amount: pfAmount
+    });
+    console.log(`Added automatic PF deduction: ${pfAmount} (based on ${pfPercentage}% of ${baseSalary})`);
+  }
+}
+if (esicPercentage > 0) {
+  const esicAmount = (baseSalary * esicPercentage) / 100;
+  if (esicAmount > 0) {
+    deductionsArray.push({
+      type: 'ESIC (Employees\' State Insurance)',
+      amount: esicAmount
+    });
+    console.log(`Added automatic ESIC deduction: ${esicAmount} (based on ${esicPercentage}% of ${baseSalary})`);
+  }
+}
+
 
     // UPDATED: Calculate totals from dynamic arrays (now includes advances)
     const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
@@ -235,13 +261,16 @@ exports.generatePayroll = async (req, res) => {
     // Populate for full salary slip
     await payroll.populate('employee', 'firstName lastName salary department');
 
-    // NEW: Calculate advance-specific summary (for frontend display)
     const advanceDeductions = deductionsArray.filter(ded => ded.type === 'Salary Advance');
     const totalAdvancesDeducted = advanceDeductions.reduce((sum, ded) => sum + ded.amount, 0);
 
+    // NEW: Extract PF/ESIC from deductions for summary (optional, for frontend breakdown)
+    const pfDeduction = deductionsArray.find(ded => ded.type === 'PF (Provident Fund)') || { amount: 0 };
+    const esicDeduction = deductionsArray.find(ded => ded.type === 'ESIC (Employees\' State Insurance)') || { amount: 0 };
+
     res.status(201).json({
       message: 'Salary slip generated successfully',
-      payroll,  // Stored details (deductions includes advances)
+      payroll,  // Stored details (deductions includes PF/ESIC)
       summary: {  // Calculated values for frontend
         baseSalary,
         totalPossibleWorkingDays,
@@ -250,10 +279,12 @@ exports.generatePayroll = async (req, res) => {
         paidLeaves,
         unpaidLeaves,
         holidayCount: totalHolidayCount,
-        deductions: deductionsArray,  // Full list (includes advances)
-        advancesDeducted: advanceDeductions,  // NEW: Filtered advances for easy display
-        totalAdvancesDeducted,  // NEW: Sum of advances
-        totalDeductionsManual,  // Sum of all manual (user + advances)
+        deductions: deductionsArray,  // Full list (includes PF/ESIC + advances)
+        advancesDeducted: advanceDeductions,  // Advances only
+        totalAdvancesDeducted,  // Sum of advances
+        pfDeduction: pfDeduction.amount,  // NEW: PF amount
+        esicDeduction: esicDeduction.amount,  // NEW: ESIC amount
+        totalDeductionsManual,  // Sum of all manual (user + advances + PF/ESIC)
         totalLeaveHalfDeductions,
         totalDeductions,
         incomes: incomesArray,
@@ -261,14 +292,12 @@ exports.generatePayroll = async (req, res) => {
         netSalary
       }
     });
-
   } catch (error) {
     console.error('Payroll generation error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ... (Previous code: imports, helpers, generatePayroll remain unchanged)
 
 // Controller: Get salary slip by employee, year, month (company-scoped) - UPDATED with pending advances
 exports.getPayrollByEmployeeAndMonth = async (req, res) => {
