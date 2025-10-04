@@ -4,7 +4,7 @@ const Company = require('../models/Company');
 
 exports.createLeave = async (req, res) => {
   try {
-    const { company, employee, reason, fromDate, toDate } = req.body;
+    const { company, employee, reason, rejectionReason, fromDate, toDate } = req.body;
 
     // Validate company and employee exist and employee belongs to company
     const emp = await Employee.findOne({ _id: employee, company });
@@ -21,6 +21,7 @@ exports.createLeave = async (req, res) => {
       company,
       employee,
       reason,
+      rejectionReason,
       fromDate,
       toDate,
       status: 'Pending',
