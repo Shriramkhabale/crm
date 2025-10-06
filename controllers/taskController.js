@@ -563,7 +563,7 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// FIXED: getAllTasks - Removed invalid $addFields in $lookup (undefined $$parentTitle); clean flat instances only
+// FIXED: getAllTasks - Now includes parents (no skip); pushes parent first, then instances for recurring
 exports.getAllTasks = async (req, res) => {
   try {
     console.log('🔍 getAllTasks - Query params:', req.query);
@@ -652,7 +652,7 @@ exports.getAllTasks = async (req, res) => {
 
     console.log('🔍 Aggregation results length:', aggregation.length);
 
-    // UPDATED: Build flat list - Skip pushing parents for recurring; only instances + generated
+    // UPDATED: Build flat list - ALWAYS push parents (no skip); for recurring, additionally push instances + generate next
     const allTasks = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);  // Today date-only
@@ -661,10 +661,16 @@ exports.getAllTasks = async (req, res) => {
     for (const doc of aggregation) {
       const isRecurringParent = doc.repeat && doc.recurrenceActive && !doc.isRecurringInstance;
 
-      if (isRecurringParent) {
-        // For recurring parents: SKIP pushing parent; only push instances + generate next
-        console.log(`🔍 Skipping parent push for recurring: ${doc.title} (ID: ${doc._id})`);
+      // ALWAYS push the parent/doc first (for visibility/management, e.g., resume button)
+      allTasks.push({ 
+        ...doc, 
+        isRecurringInstance: false, 
+        isOverdue: doc.isOverdue || (doc.endDateTime < new Date() && doc.status !== 'completed')  // Ensure overdue for parents
+      });
+      console.log(`🔍 Including parent: ${doc.title} (ID: ${doc._id}), recurring: ${isRecurringParent}`);
 
+      // For recurring parents: Additionally push instances + generate next (if active)
+      if (isRecurringParent) {
         // Add existing instances (deduplicated)
         const existingInstances = doc.recurringInstances || [];
         existingInstances.forEach(child => {
@@ -679,6 +685,7 @@ exports.getAllTasks = async (req, res) => {
             });
           }
         });
+        console.log(`🔍 Added ${existingInstances.length} existing instances for parent ${doc._id}`);
 
         // Generate/add next due instance if recurring and active (prioritizes today if matching)
         if (doc.nextFinishDateTime) {
@@ -697,18 +704,16 @@ exports.getAllTasks = async (req, res) => {
           }
         }
       } else {
-        // For non-recurring tasks or inactive recurring: Push the doc as-is (single task)
-        allTasks.push({ 
-          ...doc, 
-          isRecurringInstance: false, 
-          isOverdue: doc.isOverdue 
-        });
         console.log(`🔍 Added non-recurring task: ${doc.title} (ID: ${doc._id})`);
       }
     }
 
-    // Final sort: By startDateTime descending (recent/past first, then future)
-    allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
+    // Final sort: By startDateTime descending (recent/past first, then future); fallback to createdAt for parents
+    allTasks.sort((a, b) => {
+      const aDate = a.isRecurringInstance ? new Date(a.startDateTime) : new Date(a.createdAt || a.endDateTime);
+      const bDate = b.isRecurringInstance ? new Date(b.startDateTime) : new Date(b.createdAt || b.endDateTime);
+      return bDate - aDate;
+    });
 
     // Remove embedded recurringInstances from final docs (not needed in flat list)
     const cleanTasks = allTasks.map(task => {
@@ -716,7 +721,7 @@ exports.getAllTasks = async (req, res) => {
       return cleanTask;
     });
 
-    console.log(`📦 Returning ${cleanTasks.length} tasks (instances only for recurring, no duplicates), sample title:`, cleanTasks[0]?.title);
+    console.log(`📦 Returning ${cleanTasks.length} tasks (parents + instances for recurring, no duplicates), sample:`, cleanTasks[0]?.title);
 
     res.json({ tasks: cleanTasks });
   } catch (error) {
@@ -724,6 +729,7 @@ exports.getAllTasks = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 
 
