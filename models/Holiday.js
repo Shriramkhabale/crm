@@ -17,4 +17,6 @@ const holidaySchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+holidaySchema.index({ company: 1, date: 1 });  // For range queries
+
 module.exports = mongoose.model('Holiday', holidaySchema);

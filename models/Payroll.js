@@ -29,7 +29,7 @@ const payrollSchema = new mongoose.Schema({
   payrollMonth: { type: String, required: true }, // e.g. '2024-09'
 }, { timestamps: true });
 
-// Indexes for efficient company-wide queries
+// * for efficient company-wide queries
 payrollSchema.index({ company: 1, payrollMonth: 1 });
 payrollSchema.index({ company: 1, employee: 1, payrollMonth: 1 });
 
