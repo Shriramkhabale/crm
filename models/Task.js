@@ -8,7 +8,7 @@ const taskSchema = new mongoose.Schema({
   assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true }],
   startDateTime: { type: Date, required: true },
   endDateTime: { type: Date, required: true },
-  status: { type: String, enum: ['pending', 'in-progress', 'completed', 'overdue', 'reassigned'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'in-progress', 'completed', 'overdue', 'reassigned', 'reopen'], default: 'pending' },
   repeat: { type: Boolean, default: false },
   repeatFrequency: { type: String, enum: ['daily', 'weekly', 'monthly'] },
   repeatDaysOfWeek: [{ type: String, enum: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] }],  // Multi-select
