@@ -563,8 +563,7 @@ exports.createTask = async (req, res) => {
   }
 };
 
-
-// UPDATED: getAllTasks - Check/generate for current date if matching (then next future)
+// FIXED: getAllTasks - Removed invalid $addFields in $lookup (undefined $$parentTitle); clean flat instances only
 exports.getAllTasks = async (req, res) => {
   try {
     console.log('🔍 getAllTasks - Query params:', req.query);
@@ -580,7 +579,7 @@ exports.getAllTasks = async (req, res) => {
     // Base filters (unchanged)
     let filters = {
       company: companyObjId,
-      isRecurringInstance: { $ne: true }
+      isRecurringInstance: { $ne: true }  // Start with parents/non-recurring
     };
 
     // Apply other query filters (unchanged)
@@ -611,7 +610,7 @@ exports.getAllTasks = async (req, res) => {
 
     console.log('🔍 Final filters after recurring:', JSON.stringify(filters, null, 2));
 
-    // UPDATED: Aggregation pipeline - $lookup fetches ALL instances (past + future, no date filter)
+    // FIXED: Aggregation pipeline - Removed invalid $addFields ($$parentTitle undefined); fetches instances cleanly
     const aggregation = await Task.aggregate([
       { $match: filters },
       {
@@ -628,6 +627,7 @@ exports.getAllTasks = async (req, res) => {
             // FIXED: No date filter - fetches ALL instances (past + future)
             { $lookup: { from: 'employees', localField: 'assignedTo', foreignField: '_id', as: 'assignedTo' } },
             { $lookup: { from: 'employees', localField: 'createdBy', foreignField: '_id', as: 'createdBy' } }
+            // REMOVED: $addFields { parentTitle: '$$parentTitle' } - Not needed; add in JS loop
           ],
           as: 'recurringInstances'
         }
@@ -652,53 +652,73 @@ exports.getAllTasks = async (req, res) => {
 
     console.log('🔍 Aggregation results length:', aggregation.length);
 
-    // NEW: On-demand generation: For each active recurring parent, generate current due instance if missing (<= today)
+    // UPDATED: Build flat list - Skip pushing parents for recurring; only instances + generated
     const allTasks = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);  // Today date-only
+    const instanceIds = new Set();  // Track instance IDs to avoid duplicates
 
-    for (const parent of aggregation) {
-      // Add parent task
-      allTasks.push({ ...parent, isRecurringInstance: false, isOverdue: parent.isOverdue });
+    for (const doc of aggregation) {
+      const isRecurringParent = doc.repeat && doc.recurrenceActive && !doc.isRecurringInstance;
 
-      // Add existing instances (past + future)
-      const existingInstances = parent.recurringInstances || [];
-      existingInstances.forEach(child => {
-        allTasks.push({
-          ...child,
-          isRecurringInstance: true,
-          parentTitle: parent.title,
-          isOverdue: child.endDateTime < new Date() && child.status !== 'completed'
+      if (isRecurringParent) {
+        // For recurring parents: SKIP pushing parent; only push instances + generate next
+        console.log(`🔍 Skipping parent push for recurring: ${doc.title} (ID: ${doc._id})`);
+
+        // Add existing instances (deduplicated)
+        const existingInstances = doc.recurringInstances || [];
+        existingInstances.forEach(child => {
+          if (!instanceIds.has(child._id.toString())) {
+            instanceIds.add(child._id.toString());
+            allTasks.push({
+              ...child,
+              isRecurringInstance: true,
+              parentTitle: doc.title,  // Add parent title to each instance
+              isOverdue: child.endDateTime < new Date() && child.status !== 'completed',
+              newlyGenerated: false  // Existing, not new
+            });
+          }
         });
-      });
 
-      // UPDATED: Generate current due instance if recurring and active (prioritizes today if matching)
-      if (parent.repeat && parent.recurrenceActive && parent.nextFinishDateTime) {
-        // Fetch holidays for the recurrence period (once per parent)
-        const holidays = await getHolidaysForPeriod(companyStr, parent.startDateTime, parent.nextFinishDateTime);
-
-        // Check/generate for current due (today if matching, else next <= today)
-        const currentInstance = await generateNextInstance(parent, companyStr, holidays, parent.nextFinishDateTime);
-        if (currentInstance) {
-          // Add to results (mark as new)
-          allTasks.push({
-            ...currentInstance.toObject(),
-            isRecurringInstance: true,
-            parentTitle: parent.title,
-            isOverdue: false,  // New instances are not overdue
-            newlyGenerated: true  // Optional flag for frontend
-          });
-          console.log(`✅ Added current due instance for parent ${parent._id}: ${currentInstance.startDateTime.toISOString()}`);
+        // Generate/add next due instance if recurring and active (prioritizes today if matching)
+        if (doc.nextFinishDateTime) {
+          const holidays = await getHolidaysForPeriod(companyStr, doc.startDateTime, doc.nextFinishDateTime);
+          const currentInstance = await generateNextInstance(doc, companyStr, holidays, doc.nextFinishDateTime);
+          if (currentInstance && !instanceIds.has(currentInstance._id.toString())) {
+            instanceIds.add(currentInstance._id.toString());
+            allTasks.push({
+              ...currentInstance.toObject(),
+              isRecurringInstance: true,
+              parentTitle: doc.title,
+              isOverdue: false,  // New instances are not overdue
+              newlyGenerated: true  // Flag for frontend
+            });
+            console.log(`✅ Added current due instance for parent ${doc._id}: ${currentInstance.startDateTime.toISOString()}`);
+          }
         }
+      } else {
+        // For non-recurring tasks or inactive recurring: Push the doc as-is (single task)
+        allTasks.push({ 
+          ...doc, 
+          isRecurringInstance: false, 
+          isOverdue: doc.isOverdue 
+        });
+        console.log(`🔍 Added non-recurring task: ${doc.title} (ID: ${doc._id})`);
       }
     }
 
     // Final sort: By startDateTime descending (recent/past first, then future)
     allTasks.sort((a, b) => new Date(b.startDateTime || b.createdAt) - new Date(a.startDateTime || a.createdAt));
 
-    console.log(`📦 Returning ${allTasks.length} tasks (including all past instances + newly generated current due), sample title:`, allTasks[0]?.title);
+    // Remove embedded recurringInstances from final docs (not needed in flat list)
+    const cleanTasks = allTasks.map(task => {
+      const { recurringInstances, ...cleanTask } = task;
+      return cleanTask;
+    });
 
-    res.json({ tasks: allTasks });
+    console.log(`📦 Returning ${cleanTasks.length} tasks (instances only for recurring, no duplicates), sample title:`, cleanTasks[0]?.title);
+
+    res.json({ tasks: cleanTasks });
   } catch (error) {
     console.error('Get all tasks error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
