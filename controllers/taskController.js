@@ -1104,7 +1104,6 @@ exports.getCreditPointsTaskWise = async (req, res) => {
   .populate('assignedTo', 'firstName lastName role');
 
 
-
     // Format response: each task with creditPoints and assigned employees
     const result = tasks.map(task => ({
       taskId: task._id,
