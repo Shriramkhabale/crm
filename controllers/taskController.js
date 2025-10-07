@@ -934,17 +934,64 @@ exports.deleteTask = async (req, res) => {
 };
 
 
-// shiftedTask (unchanged - handles reassignment, works with instances too)
+// UPDATED: shiftedTask - Now handles date updates (startDateTime, endDateTime) with validation
 exports.shiftedTask = async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { assignedTo, description, nextFollowUp } = req.body;
+    const { 
+      assignedTo, 
+      description: providedDescription, 
+      nextFollowUp, 
+      startDateTime: newStartDateTime,  // NEW: From frontend payload
+      endDateTime: newEndDateTime       // NEW: From frontend payload
+    } = req.body;
     const shiftedBy = req.user.id || req.user.userId; // from auth middleware
-    console.log(" req.body-------", req.body);
+    console.log("req.body (shiftedTask):", req.body);
 
-    console.log("req.user",req.user);
     if (!assignedTo) {
       return res.status(400).json({ message: 'New assignee ID(s) is required' });
+    }
+
+    // NEW: Validate and parse new dates if provided
+    let validatedStartDateTime = null;
+    let validatedEndDateTime = null;
+    let dateChangeDescription = '';
+
+    if (newStartDateTime || newEndDateTime) {
+      // Parse dates
+      if (newStartDateTime) {
+        validatedStartDateTime = new Date(newStartDateTime);
+        if (isNaN(validatedStartDateTime)) {
+          return res.status(400).json({ message: 'Invalid startDateTime format' });
+        }
+      }
+      if (newEndDateTime) {
+        validatedEndDateTime = new Date(newEndDateTime);
+        if (isNaN(validatedEndDateTime)) {
+          return res.status(400).json({ message: 'Invalid endDateTime format' });
+        }
+      }
+
+      // Ensure end > start
+      if (validatedStartDateTime && validatedEndDateTime && validatedEndDateTime <= validatedStartDateTime) {
+        return res.status(400).json({ message: 'endDateTime must be after startDateTime' });
+      }
+
+      // Prevent past dates (unless updating an existing overdue instance)
+      const now = new Date();
+      if (validatedStartDateTime && validatedStartDateTime < now) {
+        return res.status(400).json({ message: 'Start date cannot be in the past' });
+      }
+      if (validatedEndDateTime && validatedEndDateTime < now) {
+        return res.status(400).json({ message: 'End date cannot be in the past' });
+      }
+
+      // For recurring parents: Restrict core date changes to avoid breaking pattern
+      // (Allow for instances or non-recurring)
+      dateChangeDescription = validatedStartDateTime ? `, start changed to ${validatedStartDateTime.toISOString()}` : '';
+      dateChangeDescription += validatedEndDateTime ? `, end changed to ${validatedEndDateTime.toISOString()}` : '';
+
+      console.log(`Date changes requested: Start=${validatedStartDateTime}, End=${validatedEndDateTime}`);
     }
 
     // Find the task (works for parent or instance)
@@ -953,11 +1000,22 @@ exports.shiftedTask = async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
+    // NEW: For recurring parents, prevent changing startDateTime if it affects recurrence pattern
+    if (task.repeat && !task.isRecurringInstance && newStartDateTime) {
+      // Check if new start changes the day/date that matches frequency
+      const originalStartDay = new Date(task.startDateTime).getDate();
+      const newStartDay = validatedStartDateTime.getDate();
+      if (task.repeatFrequency === 'monthly' && task.repeatDatesOfMonth && !task.repeatDatesOfMonth.includes(newStartDay)) {
+        return res.status(400).json({ message: 'Cannot change start date on recurring parent - it would break the monthly pattern. Update instances instead.' });
+      }
+      // Similar checks for weekly/daily can be added if needed
+    }
+
     // Normalize assignedTo and oldAssigneeId as arrays
     const oldAssigneeIds = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
     const newAssignedToArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
 
-    // Update assignedTo and optionally nextFollowUpDateTime
+    // Apply updates
     task.assignedTo = newAssignedToArray;
 
     if (nextFollowUp) {
@@ -968,15 +1026,30 @@ exports.shiftedTask = async (req, res) => {
       task.nextFollowUpDateTime = nextFollowUpDate;
     }
 
-    console.log("nextFollowUp",nextFollowUp);
-    
+    // NEW: Apply date updates if provided
+    if (validatedStartDateTime) {
+      task.startDateTime = validatedStartDateTime;
+    }
+    if (validatedEndDateTime) {
+      task.endDateTime = validatedEndDateTime;
+      // For recurring parents, also update nextFinishDateTime if endDateTime changed
+      if (task.repeat && !task.isRecurringInstance) {
+        task.nextFinishDateTime = validatedEndDateTime;
+      }
+    }
+
+    console.log(`Updating task ${taskId}: assignedTo=${newAssignedToArray}, dates changed? ${!!validatedStartDateTime || !!validatedEndDateTime}`);
+
     await task.save();
 
-    // Create status update entry
+    // UPDATED: Create status update entry with date change info
+    const fullDescription = providedDescription || 
+      `Task reassigned from ${oldAssigneeIds.join(', ')} to ${newAssignedToArray.join(', ')}${dateChangeDescription}`;
+    
     const statusUpdate = new TaskStatusUpdate({
       task: taskId,
       status: 'reassigned',
-      description: description || `Task reassigned from ${oldAssigneeIds.join(', ')} to ${newAssignedToArray.join(', ')}`,
+      description: fullDescription,
       nextFollowUpDateTime: nextFollowUp ? new Date(nextFollowUp) : undefined,
       shiftedBy,
       oldAssigneeId: oldAssigneeIds.length === 1 ? oldAssigneeIds[0] : oldAssigneeIds,
@@ -985,12 +1058,18 @@ exports.shiftedTask = async (req, res) => {
 
     await statusUpdate.save();
 
-    res.json({ message: 'Task reassigned successfully', task, statusUpdate });
+    // NEW: If recurring instance was updated, flag for potential regeneration (but don't auto-regen here)
+    if (task.isRecurringInstance && (validatedStartDateTime || validatedEndDateTime)) {
+      console.log(`Date updated on recurring instance ${taskId} - future generations unaffected`);
+    }
+
+    res.json({ message: 'Task reassigned successfully' + (dateChangeDescription ? ' with updated dates' : ''), task, statusUpdate });
   } catch (error) {
     console.error('Reassign task error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 // getTasksByEmployeeId (unchanged - fetches all tasks assigned to employee, including instances)
 exports.getTasksByEmployeeId = async (req, res) => {
