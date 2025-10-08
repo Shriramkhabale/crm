@@ -1,19 +1,4 @@
-// //routes/taskStatusUpdateRoutes.js
-
-// const express = require('express');
-// const router = express.Router();
-// const taskStatusUpdateController = require('../controllers/taskStatusUpdateController');
-
-
-// const authMiddleware = require('../middleware/authMiddleware');
-// router.get('/reassigned-tasks', authMiddleware, taskStatusUpdateController.getReassignedTasksForCompany);
-
-// // Update task status and save history
-// router.put('/:taskId/status', authMiddleware, taskStatusUpdateController.updateTaskStatus);
-// // Optionally, get status update history for a task
-// router.get('/:taskId/status-updates', authMiddleware, taskStatusUpdateController.getTaskStatusUpdates);
-// module.exports = router;
-
+//routes/taskStatusUpdateRoutes.js
 
 const express = require('express');
 const router = express.Router();
@@ -32,7 +17,6 @@ router.put(
   ]),
   taskStatusUpdateController.updateTaskStatusWithFiles
 );
-
 // Get status update history for a task
 router.get('/:taskId/status-updates', authMiddleware, taskStatusUpdateController.getTaskStatusUpdates);
 

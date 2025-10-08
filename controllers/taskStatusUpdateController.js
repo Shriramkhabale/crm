@@ -133,21 +133,33 @@ exports.getShiftedTasks = async (req, res) => {
 
 exports.getReassignedTasksForCompany = async (req, res) => {
   try {
-    const companyId = await getCompanyIdFromUser (req.user);
+    // Get company ID from logged-in user
+    const companyId = await getCompanyIdFromUser  (req.user);
     if (!companyId) {
       return res.status(400).json({ message: 'Company ID not found for user' });
     }
 
-    // Pagination params
+    // Pagination parameters (default to paginated; override for "all")
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 20;
-    const skip = (page - 1) * limit;
+    let limit = parseInt(req.query.limit, 10) || 20;
+    const all = req.query.all === 'true'; // ?all=true to fetch everything
 
-    // Aggregate TaskStatusUpdate documents where oldAssigneeId exists
-    const reassignedTasks = await TaskStatusUpdate.aggregate([
+    if (all) {
+      limit = 10000; // High limit for "all" (adjust based on data size)
+      console.log(`Fetching ALL reassigned tasks for company ${companyId} (limit: ${limit})`);
+    } else {
+      console.log(`Fetching paginated reassigned tasks for company ${companyId} (page: ${page}, limit: ${limit})`);
+    }
+
+    const skip = all ? 0 : (page - 1) * limit; // No skip for "all"
+
+    // STEP 1: Get total count (simple aggregation – no joins for speed)
+    const countPipeline = [
       {
         $match: {
-          oldAssigneeId: { $exists: true, $ne: null }
+          status: 'reassigned', // Explicitly match reassigned status
+          oldAssigneeId: { $exists: true, $ne: null }, // Only reassigned
+          shiftedBy: { $exists: true, $ne: null } // Ensure shiftedBy exists (non-null)
         }
       },
       {
@@ -158,36 +170,195 @@ exports.getReassignedTasksForCompany = async (req, res) => {
           as: 'taskDetails'
         }
       },
-      { $unwind: '$taskDetails' },
+      { $unwind: { path: '$taskDetails', preserveNullAndEmptyArrays: true } },
       {
         $match: {
           'taskDetails.company': new mongoose.Types.ObjectId(companyId)
         }
       },
-      { $sort: { updatedAt: -1 } },
+      { $count: 'totalCount' }
+    ];
+
+    console.log("countPipeline", countPipeline);
+
+    const countResult = await TaskStatusUpdate.aggregate(countPipeline);
+    console.log("countResult", countResult);
+    
+    const totalCount = countResult.length > 0 ? countResult[0].totalCount : 0;
+    console.log(`Total reassigned tasks for company ${companyId}: ${totalCount}`);
+
+    if (totalCount === 0) {
+      return res.json({
+        success: true,
+        page: all ? 1 : page,
+        limit: all ? totalCount : limit,
+        totalCount,
+        hasMore: false,
+        reassignedTasks: [] // Empty array for no results
+      });
+    }
+
+    // STEP 2: Get paginated/all data with joins/populations
+    const dataPipeline = [
+      {
+        $match: {
+          status: 'reassigned', // Explicitly match reassigned status
+          oldAssigneeId: { $exists: true, $ne: null },
+          shiftedBy: { $exists: true, $ne: null } // Ensure shiftedBy exists (non-null)
+        }
+      },
+      {
+        $lookup: {
+          from: 'tasks',
+          localField: 'task',
+          foreignField: '_id',
+          as: 'taskDetails'
+        }
+      },
+      { $unwind: { path: '$taskDetails', preserveNullAndEmptyArrays: true } },
+      {
+        $match: {
+          'taskDetails.company': new mongoose.Types.ObjectId(companyId)
+        }
+      },
+      {
+        $sort: { updatedAt: -1 } // Most recent first
+      },
       { $skip: skip },
       { $limit: limit },
+      // FIXED: Lookup for shiftedBy - REMOVED company filter to allow matching
       {
         $lookup: {
           from: 'employees',
           localField: 'shiftedBy',
           foreignField: '_id',
-          as: 'shiftedByDetails'
+          as: 'shiftedByDetails',
+          pipeline: [
+            {
+              $match: {
+                _id: { $exists: true, $ne: null } // Only ensure valid document, no company filter
+              }
+            },
+            { 
+              $project: { 
+                firstName: 1, 
+                lastName: 1, 
+                email: 1, 
+                role: 1, 
+                teamMemberName: 1,
+                _id: 1 
+              } 
+            }
+          ]
         }
       },
       { $unwind: { path: '$shiftedByDetails', preserveNullAndEmptyArrays: true } },
+      // FIXED: Always create full shiftedBy object with explicit fallbacks
+      {
+        $addFields: {
+          shiftedBy: {
+            _id: { $toString: '$shiftedBy' }, // Always string ID
+            teamMemberName: {
+              $ifNull: [
+                '$shiftedByDetails.teamMemberName',
+                {
+                  $cond: {
+                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    then: 'Company Admin',
+                    else: { $concat: [ 'Unknown Shifter (ID: ', { $toString: '$shiftedBy' }, ')' ] }
+                  }
+                }
+              ]
+            },
+            firstName: {
+              $ifNull: [
+                '$shiftedByDetails.firstName',
+                {
+                  $cond: {
+                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    then: 'Company',
+                    else: null
+                  }
+                }
+              ]
+            },
+            lastName: {
+              $ifNull: [
+                '$shiftedByDetails.lastName',
+                {
+                  $cond: {
+                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    then: 'Admin',
+                    else: null
+                  }
+                }
+              ]
+            },
+            email: { $ifNull: [ '$shiftedByDetails.email', null ] },
+            role: {
+              $ifNull: [
+                '$shiftedByDetails.role',
+                {
+                  $cond: {
+                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    then: 'Company',
+                    else: 'Unknown'
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      // FIXED: Lookup for oldAssignee - REMOVED company filter
       {
         $lookup: {
           from: 'employees',
           localField: 'oldAssigneeId',
           foreignField: '_id',
-          as: 'oldAssigneeDetails'
+          as: 'oldAssigneeDetails',
+          pipeline: [
+            {
+              $match: {
+                _id: { $exists: true, $ne: null } // No company filter
+              }
+            },
+            { 
+              $project: { 
+                firstName: 1, 
+                lastName: 1, 
+                email: 1, 
+                role: 1, 
+                teamMemberName: 1,
+                _id: 1 
+              } 
+            }
+          ]
         }
       },
       { $unwind: { path: '$oldAssigneeDetails', preserveNullAndEmptyArrays: true } },
+      // FIXED: Always create full oldAssignee object with explicit fallbacks
+      {
+        $addFields: {
+          oldAssignee: {
+            _id: { $toString: '$oldAssigneeId' }, // Always string ID
+            teamMemberName: {
+              $ifNull: [
+                '$oldAssigneeDetails.teamMemberName',
+                { $concat: [ 'Unknown Assignee (ID: ', { $toString: '$oldAssigneeId' }, ')' ] }
+              ]
+            },
+            firstName: { $ifNull: [ '$oldAssigneeDetails.firstName', null ] },
+            lastName: { $ifNull: [ '$oldAssigneeDetails.lastName', null ] },
+            email: { $ifNull: [ '$oldAssigneeDetails.email', null ] },
+            role: { $ifNull: [ '$oldAssigneeDetails.role', 'Unknown' ] }
+          }
+        }
+      },
+      // Project final structure (clean and consistent)
       {
         $project: {
-          _id: 1,
+          _id: { $toString: '$_id' }, // Stringify status update ID
           status: 1,
           description: 1,
           givenCreditPoints: 1,
@@ -196,113 +367,53 @@ exports.getReassignedTasksForCompany = async (req, res) => {
           audio: 1,
           nextFollowUpDateTime: 1,
           updatedAt: 1,
-          task: '$taskDetails',
-          shiftedBy: '$shiftedByDetails',
-          oldAssignee: '$oldAssigneeDetails'
+          task: {
+            _id: { $toString: '$taskDetails._id' },
+            title: '$taskDetails.title',
+            description: '$taskDetails.description',
+            status: '$taskDetails.status',
+            priority: '$taskDetails.priority',
+            startDateTime: '$taskDetails.startDateTime',
+            endDateTime: '$taskDetails.endDateTime',
+            assignedTo: '$taskDetails.assignedTo',
+            department: '$taskDetails.department'
+          },
+          shiftedBy: 1, // Full object with fallbacks
+          oldAssignee: 1 // Full object with fallbacks
         }
       }
-    ]);
+    ];
 
-    res.json({
-      page,
-      limit,
-      count: reassignedTasks.length,
-      reassignedTasks
-    });
-  } catch (error) {
-    console.error('getReassignedTasksForCompany error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
+    console.log("dataPipeline", dataPipeline); // Debug: Log pipeline for verification
 
-
-
-exports.getReassignedTasksForCompany = async (req, res) => {
-  try {
-    // Get company ID from logged-in user
-    const companyId = await getCompanyIdFromUser (req.user);
-    if (!companyId) {
-      return res.status(400).json({ message: 'Company ID not found for user' });
+    const dataResult = await TaskStatusUpdate.aggregate(dataPipeline);
+   
+    // Handle large "all" results (optional warning)
+    if (all && dataResult.length > 5000) {
+      console.warn(`Large result set (${dataResult.length}) for "all" query – consider pagination for UI`);
     }
 
-    // Pagination parameters
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 20;
-    const skip = (page - 1) * limit;
-
-    // Aggregation pipeline
-    const reassignedTasks = await TaskStatusUpdate.aggregate([
-      {
-        $match: {
-          oldAssigneeId: { $exists: true, $ne: null }
-        }
-      },
-      {
-        $lookup: {
-          from: 'tasks',
-          localField: 'task',
-          foreignField: '_id',
-          as: 'taskDetails'
-        }
-      },
-      { $unwind: '$taskDetails' },
-      {
-        $match: {
-          'taskDetails.company': new mongoose.Types.ObjectId(companyId)
-        }
-      },
-      {
-        $sort: { updatedAt: -1 }
-      },
-      { $skip: skip },
-      { $limit: limit },
-      {
-        $lookup: {
-          from: 'employees',
-          localField: 'shiftedBy',
-          foreignField: '_id',
-          as: 'shiftedByDetails'
-        }
-      },
-      { $unwind: { path: '$shiftedByDetails', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'employees',
-          localField: 'oldAssigneeId',
-          foreignField: '_id',
-          as: 'oldAssigneeDetails'
-        }
-      },
-      { $unwind: { path: '$oldAssigneeDetails', preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 1,
-          status: 1,
-          description: 1,
-          givenCreditPoints:1,
-          image: 1,
-          file: 1,
-          audio: 1,
-          nextFollowUpDateTime: 1,
-          updatedAt: 1,
-          task: '$taskDetails',
-          shiftedBy: '$shiftedByDetails',
-          oldAssignee: '$oldAssigneeDetails'
-        }
-      }
-    ]);
+    const hasMore = !all && (skip + dataResult.length < totalCount);
 
     res.json({
-      page,
-      limit,
-      count: reassignedTasks.length,
-      reassignedTasks
+      success: true,
+      page: all ? 1 : page, // Treat "all" as single page
+      limit: all ? totalCount : limit,
+      totalCount,
+      hasMore,
+      reassignedTasks: dataResult // Array of reassigned tasks
     });
+
   } catch (error) {
     console.error('getReassignedTasksForCompany error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message 
+    });
   }
 };
+
 
 
 
