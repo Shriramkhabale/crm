@@ -2,21 +2,22 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const employeeSchema = new mongoose.Schema({
-  company: { type: String, required: true }, // or ObjectId ref if you have Company collection
+  company: { type: String, required: true }, 
   teamMemberName: { type: String, required: true },  
-  mobileNumber: { type: String, required: true },    // Mobile Number *
-  emergencyMobileNumber: { type: String },            // Emergency Mob no
-  email: { type: String, required: true, unique: true }, // Email Address *
+  isActive:{type: Boolean, default: true},
+  mobileNumber: { type: String, required: true },    
+  emergencyMobileNumber: { type: String },            
+  email: { type: String, required: true, unique: true }, 
   password: { type: String, required: true },
-  salary: { type: String },                            // Salary *
-  dateOfJoining: { type: Date },                       // Date of Joining
-  shift: { type: String },                             // Shift (dynamic dropdown)
-  department: [{ type: String, required: true }],       // Department (dynamic dropdown)
+  salary: { type: String },                           
+  dateOfJoining: { type: Date },                       
+  shift: { type: String },                             
+  department: [{ type: String, required: true }],      
   role: {type: String},
   designation:[{type: String}],
-  aadharNumber: { type: String },                       // Aadhar Number
-  panNumber: { type: String },                          // Pan Number
-  userUpi: { type: String },                            // User Upi
+  aadharNumber: { type: String },                      
+  panNumber: { type: String },                         
+  userUpi: { type: String },                           
   pfPercentage: { type: String },                            
   esicPercentage: { type: String },                            
   weeklyHoliday: [{

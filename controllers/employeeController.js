@@ -51,6 +51,7 @@ exports.createEmployee = async (req, res) => {
       company,
       teamMemberName,
       mobileNumber,
+      isActive,
       emergencyMobileNumber,
       email,
       password,
@@ -127,6 +128,7 @@ exports.createEmployee = async (req, res) => {
       company,
       teamMemberName,
       mobileNumber,
+      isActive,
       emergencyMobileNumber,
       email,
       password,
@@ -172,6 +174,7 @@ exports.updateEmployee = async (req, res) => {
     const {
       teamMemberName,
       mobileNumber,
+      isActive,
       emergencyMobileNumber,
       email,
       password,
@@ -214,6 +217,7 @@ exports.updateEmployee = async (req, res) => {
     // Standard field updates (unchanged)
     if (teamMemberName) employee.teamMemberName = teamMemberName;
     if (mobileNumber) employee.mobileNumber = mobileNumber;
+    if (isActive) employee.isActive = isActive;
     if (emergencyMobileNumber) employee.emergencyMobileNumber = emergencyMobileNumber;
     if (email) employee.email = email;
     if (salary !== undefined) employee.salary = salary;
