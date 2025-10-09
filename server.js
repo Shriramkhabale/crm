@@ -42,7 +42,6 @@ const projectCustomStatusRoutes = require('./routes/projectCustomStatusRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
-
 const cors = require('cors');
 
 require('dotenv').config();

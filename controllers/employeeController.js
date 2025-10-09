@@ -71,7 +71,8 @@ exports.createEmployee = async (req, res) => {
       address,
       accessPermissions,
       qrCode,
-      documents: documentTypes  // NEW: Array of strings for dynamic, e.g., ["Driving License", "Passport"]
+      documentTypes,
+      // documents: documentTypes  // NEW: Array of strings for dynamic, e.g., ["Driving License", "Passport"]
     } = req.body;
 
     // Validate departments (unchanged)
@@ -135,7 +136,7 @@ exports.createEmployee = async (req, res) => {
       salary,
       dateOfJoining,
       shift,
-      department: validDepartments,  // <-- Fixed: Assign 'departments' to model field 'department' (as array)
+      department: validDepartments, 
       role,
       designation,
       aadharNumber,
@@ -194,7 +195,8 @@ exports.updateEmployee = async (req, res) => {
       address,
       accessPermissions,
       qrCode,
-      documents: newDocumentTypes,  // NEW: For adding new dynamic docs
+      newDocumentTypes,
+      // documents: newDocumentTypes,  // NEW: For adding new dynamic docs
       removeDocuments,  // NEW: Array of dynamic types to remove, e.g., ["Driving License"]
       adharImage: adharImageNull,  // NEW: Explicit null to delete fixed
       panImage: panImageNull,
