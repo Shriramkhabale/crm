@@ -16,7 +16,7 @@ const express = require('express');
 const router = express.Router();
 const leadController = require('../controllers/leadController');
 const authMiddleware = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadImages'); // multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
 // Use upload.fields to accept multiple files with different field names
 router.post(

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/protect');
 const authorizeRole = require('../middleware/authorizeRole');
-const upload = require('../middleware/uploadImages');
+const upload = require('../middleware/multerCloudinary');
 const superadminController = require('../controllers/superadminController');
 
 // Business Profile routes

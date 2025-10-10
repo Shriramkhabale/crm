@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const attendanceController = require('../controllers/attendanceController');
 const authMiddleware = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadImages'); // multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
 // Mark or update attendance
 // router.post('/', authMiddleware, attendanceController.markAttendance);

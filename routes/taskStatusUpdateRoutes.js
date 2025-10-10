@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const taskStatusUpdateController = require('../controllers/taskStatusUpdateController');
 const authMiddleware = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadImages'); // your multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary'); // your multer-cloudinary middleware
 
 // Update task status and save history with file uploads
 router.put(

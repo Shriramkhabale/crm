@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const SupportTicketController = require("../controllers/SupportTicketController");
-const upload = require("../middleware/uploadImages"); // your multer-cloudinary middleware
+const upload = require("../middleware/multerCloudinary"); // your multer-cloudinary middleware
 
 router.post(
   "/",

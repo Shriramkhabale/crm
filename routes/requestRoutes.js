@@ -14,7 +14,7 @@
 const express = require('express');
 const router = express.Router();
 const requestController = require('../controllers/requestController');
-const upload = require('../middleware/uploadImages'); // multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
 // Accept uploads for image, audio, and file fields
 router.post(

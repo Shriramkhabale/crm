@@ -22,7 +22,7 @@ const router = express.Router();
 const protect = require('../middleware/protect');
 const authorizeRole = require('../middleware/authorizeRole');
 const franchiseController = require('../controllers/franchiseController');
-const upload = require('../middleware/uploadImages'); // multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
 router.use(protect);
 router.use(authorizeRole('superadmin'));
