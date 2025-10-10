@@ -47,6 +47,15 @@ const deleteFromCloudinary = async (publicId) => {
 // Controller: Create employee (fixed + dynamic docs)
 exports.createEmployee = async (req, res) => {
   try {
+    // ADD: Log full incoming data for debugging (remove after fixing)
+    console.log('🔍 CREATE DEBUG - Full req.body:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 CREATE DEBUG - Full req.files:', req.files ? {
+      adharImage: req.files.adharImage ? `${req.files.adharImage.length} file(s)` : 'none',
+      panImage: req.files.panImage ? `${req.files.panImage.length} file(s)` : 'none',
+      profileImage: req.files.profileImage ? `${req.files.profileImage.length} file(s)` : 'none',
+      documents: req.files.documents ? `${req.files.documents.length} file(s)` : 'none'
+    } : 'no files');
+
     const {
       company,
       teamMemberName,
@@ -71,9 +80,12 @@ exports.createEmployee = async (req, res) => {
       address,
       accessPermissions,
       qrCode,
-      documentTypes,
-      // documents: documentTypes  // NEW: Array of strings for dynamic, e.g., ["Driving License", "Passport"]
+      documentTypes,  // Expect array from frontend for CREATE
     } = req.body;
+
+    // ADD: Specific logging for dynamic docs
+    console.log('📎 CREATE: Received documentTypes:', documentTypes ? `${documentTypes.length} items: ${JSON.stringify(documentTypes)}` : 'undefined/empty');
+    console.log('📎 CREATE: Received documents files:', req.files?.documents ? `${req.files.documents.length} file(s): ${req.files.documents.map(f => f.originalname || f.filename).join(', ')}` : 'none/missing');
 
     // Validate departments (unchanged)
     if (!departments || !Array.isArray(departments) || departments.length === 0) {
@@ -89,21 +101,32 @@ exports.createEmployee = async (req, res) => {
     const existing = await Employee.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
 
-    // FIXED: Extract uploaded file URLs (unchanged)
+    // FIXED: Extract uploaded file URLs
     const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : null;
     const panImage = req.files?.panImage ? req.files.panImage[0].path : null;
     const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : null;
+
+    console.log('🖼️ Fixed images processed:', {
+      adharImage: adharImage ? adharImage.substring(0, 50) + '...' : 'none',
+      panImage: panImage ? panImage.substring(0, 50) + '...' : 'none',
+      profileImage: profileImage ? profileImage.substring(0, 50) + '...' : 'none'
+    });
 
     // NEW: Handle dynamic documents
     let dynamicDocuments = [];
     if (documentTypes && Array.isArray(documentTypes) && documentTypes.length > 0) {
       const types = documentTypes.filter(type => type && type.trim() !== '');
+      console.log('📎 CREATE: Filtered types:', types);  // ADD: Log filtered types
+
       if (types.length === 0) {
         return res.status(400).json({ message: 'Invalid dynamic document types provided' });
       }
       if (req.files?.documents && Array.isArray(req.files.documents)) {
         const files = req.files.documents;
+        console.log('📎 CREATE: Files details:', files.map((f, i) => ({ name: f.originalname, path: f.path?.substring(0, 50) + '...', public_id: f.public_id || f.filename })));  // ADD: Detailed file log
+
         if (files.length !== types.length) {
+          console.warn('⚠️ MISMATCH: Types length:', types.length, 'vs Files length:', files.length);  // ADD: Warn on mismatch
           return res.status(400).json({ 
             message: `Dynamic docs mismatch: ${types.length} types but ${files.length} files` 
           });
@@ -119,10 +142,14 @@ exports.createEmployee = async (req, res) => {
           url: file.path,
           publicId: file.public_id || file.filename  // Cloudinary public ID
         }));
-        console.log('Created dynamic documents:', dynamicDocuments.map(d => d.type));
+        console.log('✅ CREATE: Created dynamic documents:', dynamicDocuments.length, 'items');
+        dynamicDocuments.forEach(doc => console.log(`│   ├── Type: ${doc.type}, URL: ${doc.url.substring(0, 50)}..., PublicID: ${doc.publicId}`));
       } else {
+        console.warn('⚠️ No documents files received despite types');  // ADD: Warn if no files
         return res.status(400).json({ message: 'Files required for dynamic document types' });
       }
+    } else {
+      console.log('ℹ️ CREATE: Skipping dynamic docs (no valid documentTypes)');  // ADD: Log skip reason
     }
 
     const employee = new Employee({
@@ -158,12 +185,18 @@ exports.createEmployee = async (req, res) => {
     });
 
     await employee.save();
+    console.log('✅ Employee saved with documents count:', employee.documents.length);  // ADD: Final log
+
+    // Remove password from response
+    employee.password = undefined;
+
     res.status(201).json({ message: 'Employee created', employee });
   } catch (error) {
     console.error('Create employee error:', error); // Enhanced logging
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 // Controller: Update employee (fixed + dynamic docs)
 exports.updateEmployee = async (req, res) => {
