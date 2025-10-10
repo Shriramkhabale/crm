@@ -47,27 +47,24 @@ const deleteFromCloudinary = async (publicId) => {
 // Controller: Create employee (fixed + dynamic docs)
 exports.createEmployee = async (req, res) => {
   try {
-    // ADD: Log full incoming data for debugging (remove after fixing)
-    console.log('🔍 CREATE DEBUG - Full req.body:', JSON.stringify(req.body, null, 2));
-    console.log('🔍 CREATE DEBUG - Full req.files:', req.files ? {
-      adharImage: req.files.adharImage ? `${req.files.adharImage.length} file(s)` : 'none',
-      panImage: req.files.panImage ? `${req.files.panImage.length} file(s)` : 'none',
-      profileImage: req.files.profileImage ? `${req.files.profileImage.length} file(s)` : 'none',
-      documents: req.files.documents ? `${req.files.documents.length} file(s)` : 'none'
-    } : 'no files');
+    // Log incoming data (enhanced for docs)
+    console.log('🔍 CREATE DEBUG - Full req.body keys:', Object.keys(req.body));
+    console.log('🔍 CREATE DEBUG - documentTypes raw:', { type: typeof req.body.documentTypes, value: req.body.documentTypes });
+    console.log('🔍 CREATE DEBUG - req.files keys:', req.files ? Object.keys(req.files) : 'no files');
+    console.log('🔍 CREATE DEBUG - documents files:', req.files?.documents ? `${req.files.documents.length} file(s)` : 'none');
 
     const {
       company,
       teamMemberName,
       mobileNumber,
-      isActive,
+      isActive = true,
       emergencyMobileNumber,
       email,
       password,
       salary,
       dateOfJoining,
       shift,
-      departments,  // <-- Changed: Expect 'departments' (plural) from frontend
+      departments,  // Expect array from frontend
       role,
       designation,
       aadharNumber,
@@ -80,77 +77,148 @@ exports.createEmployee = async (req, res) => {
       address,
       accessPermissions,
       qrCode,
-      documentTypes,  // Expect array from frontend for CREATE
+      documentTypes,  // Expect array (or string for single) from frontend for CREATE
+      pfEnabled = false,  // From frontend
+      esicEnabled = false,
     } = req.body;
 
-    // ADD: Specific logging for dynamic docs
-    console.log('📎 CREATE: Received documentTypes:', documentTypes ? `${documentTypes.length} items: ${JSON.stringify(documentTypes)}` : 'undefined/empty');
-    console.log('📎 CREATE: Received documents files:', req.files?.documents ? `${req.files.documents.length} file(s): ${req.files.documents.map(f => f.originalname || f.filename).join(', ')}` : 'none/missing');
-
-    // Validate departments (unchanged)
-    if (!departments || !Array.isArray(departments) || departments.length === 0) {
+    // FIXED: Robust departments parsing (prevents 400, handles single/multiple/JSON)
+    let parsedDepartments = [];
+    if (req.body.departmentsJSON) {  // Frontend JSON fallback
+      try {
+        parsedDepartments = JSON.parse(req.body.departmentsJSON);
+      } catch (e) {
+        console.warn('⚠️ Failed to parse departmentsJSON:', e.message);
+      }
+    } else if (Array.isArray(departments)) {
+      parsedDepartments = departments;
+    } else if (typeof departments === 'string') {
+      // Handle repeated appends as comma-separated or single
+      if (departments.includes(',')) {
+        parsedDepartments = departments.split(',').map(id => id.trim()).filter(Boolean);
+      } else {
+        parsedDepartments = [departments].filter(Boolean);
+      }
+    }
+    // Also check for repeated 'department' fields (legacy)
+    if (parsedDepartments.length === 0 && req.body.department) {
+      if (Array.isArray(req.body.department)) {
+        parsedDepartments = req.body.department.filter(Boolean);
+      } else {
+        parsedDepartments = [req.body.department].filter(Boolean);
+      }
+    }
+    const validDepartments = [...new Set(parsedDepartments.filter(id => id && id.trim() !== ''))];
+    console.log('📋 CREATE: Parsed departments:', validDepartments.length, 'IDs:', validDepartments);
+    if (validDepartments.length === 0) {
       return res.status(400).json({ message: 'At least one department is required' });
     }
-    const validDepartments = [...new Set(departments.filter(id => id && id.trim() !== ''))];
-    if (validDepartments.length === 0) {
-      return res.status(400).json({ message: 'Invalid departments provided' });
+
+    // FIXED: Robust designation parsing (similar to departments)
+    let parsedDesignation = [];
+    if (req.body.designationJSON) {
+      try {
+        parsedDesignation = JSON.parse(req.body.designationJSON);
+      } catch (e) {
+        console.warn('⚠️ Failed to parse designationJSON:', e.message);
+      }
+    } else if (Array.isArray(designation)) {
+      parsedDesignation = designation;
+    } else if (typeof designation === 'string') {
+      if (designation.includes(',')) {
+        parsedDesignation = designation.split(',').map(id => id.trim()).filter(Boolean);
+      } else {
+        parsedDesignation = [designation].filter(Boolean);
+      }
+    }
+    const validDesignation = [...new Set(parsedDesignation.filter(id => id && id.trim() !== ''))];
+    console.log('📋 CREATE: Parsed designation:', validDesignation.length, 'IDs:', validDesignation);
+    if (validDesignation.length === 0) {
+      return res.status(400).json({ message: 'At least one designation is required' });
     }
 
-    console.log('Creating employee with departments:', validDepartments); // Debug log
-
+    // Email duplicate check
     const existing = await Employee.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
 
-    // FIXED: Extract uploaded file URLs
+    // Fixed images (unchanged)
     const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : null;
     const panImage = req.files?.panImage ? req.files.panImage[0].path : null;
     const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : null;
 
     console.log('🖼️ Fixed images processed:', {
-      adharImage: adharImage ? adharImage.substring(0, 50) + '...' : 'none',
-      panImage: panImage ? panImage.substring(0, 50) + '...' : 'none',
-      profileImage: profileImage ? profileImage.substring(0, 50) + '...' : 'none'
+      adharImage: adharImage ? 'present' : 'none',
+      panImage: panImage ? 'present' : 'none',
+      profileImage: profileImage ? 'present' : 'none'
     });
 
-    // NEW: Handle dynamic documents
+    // FIXED: Robust dynamic documents parsing (handles string/single vs array/multiple)
     let dynamicDocuments = [];
-    if (documentTypes && Array.isArray(documentTypes) && documentTypes.length > 0) {
-      const types = documentTypes.filter(type => type && type.trim() !== '');
-      console.log('📎 CREATE: Filtered types:', types);  // ADD: Log filtered types
-
-      if (types.length === 0) {
-        return res.status(400).json({ message: 'Invalid dynamic document types provided' });
+    let parsedDocumentTypes = [];
+    if (documentTypes) {
+      if (Array.isArray(documentTypes)) {
+        parsedDocumentTypes = documentTypes;
+      } else if (typeof documentTypes === 'string') {
+        // Coerce single string to array (critical fix for single doc)
+        parsedDocumentTypes = [documentTypes.trim()].filter(Boolean);
+        console.log('📎 CREATE: Coerced single string documentTypes to array:', parsedDocumentTypes);
+      } else {
+        console.warn('⚠️ Invalid documentTypes format:', typeof documentTypes);
+        parsedDocumentTypes = [];
       }
-      if (req.files?.documents && Array.isArray(req.files.documents)) {
+      console.log('📎 CREATE: Raw documentTypes:', typeof documentTypes, JSON.stringify(documentTypes));
+      console.log('📎 CREATE: Parsed documentTypes:', parsedDocumentTypes.length, 'items:', parsedDocumentTypes);
+    }
+
+    const types = parsedDocumentTypes.filter(type => type && type.trim() !== '');
+    console.log('📎 CREATE: Filtered types:', types.length, types);
+
+    if (types.length > 0) {
+      if (req.files?.documents && Array.isArray(req.files.documents) && req.files.documents.length > 0) {
         const files = req.files.documents;
-        console.log('📎 CREATE: Files details:', files.map((f, i) => ({ name: f.originalname, path: f.path?.substring(0, 50) + '...', public_id: f.public_id || f.filename })));  // ADD: Detailed file log
+        console.log('📎 CREATE: Files received:', files.length, 'details:', files.map((f, i) => ({
+          index: i,
+          name: f.originalname,
+          path: f.path ? f.path.substring(0, 50) + '...' : 'no path',
+          public_id: f.public_id || f.filename
+        })));
 
         if (files.length !== types.length) {
-          console.warn('⚠️ MISMATCH: Types length:', types.length, 'vs Files length:', files.length);  // ADD: Warn on mismatch
+          console.warn('⚠️ MISMATCH: Types:', types.length, 'vs Files:', files.length);
           return res.status(400).json({ 
             message: `Dynamic docs mismatch: ${types.length} types but ${files.length} files` 
           });
         }
-        // Check duplicates
+
+        // Check duplicates (case-insensitive)
         const uniqueTypes = [...new Set(types.map(t => t.toLowerCase()))];
         if (uniqueTypes.length !== types.length) {
           return res.status(400).json({ message: 'Duplicate dynamic document types not allowed' });
         }
-        // Create array
+
+        // Create array - match by index
         dynamicDocuments = files.map((file, index) => ({
-          type: types[index].trim(),
+          type: types[index]?.trim() || 'Unknown',
           url: file.path,
-          publicId: file.public_id || file.filename  // Cloudinary public ID
+          publicId: file.public_id || file.filename,
+          uploadedAt: new Date()
         }));
         console.log('✅ CREATE: Created dynamic documents:', dynamicDocuments.length, 'items');
-        dynamicDocuments.forEach(doc => console.log(`│   ├── Type: ${doc.type}, URL: ${doc.url.substring(0, 50)}..., PublicID: ${doc.publicId}`));
+        dynamicDocuments.forEach(doc => {
+          console.log(`│   ├── Type: "${doc.type}", URL: ${doc.url?.substring(0, 50)}..., PublicID: ${doc.publicId}`);
+        });
       } else {
-        console.warn('⚠️ No documents files received despite types');  // ADD: Warn if no files
+        console.warn('⚠️ CREATE: No documents files received (but types present):', req.files?.documents);
         return res.status(400).json({ message: 'Files required for dynamic document types' });
       }
     } else {
-      console.log('ℹ️ CREATE: Skipping dynamic docs (no valid documentTypes)');  // ADD: Log skip reason
+      console.log('ℹ️ CREATE: Skipping dynamic docs (no valid types)');
     }
+
+    // Coerce other arrays (unchanged)
+    const parsedPaidLeaves = Array.isArray(paidLeaves) ? paidLeaves : [];
+    const parsedWeeklyHoliday = Array.isArray(weeklyHoliday) ? weeklyHoliday : [];
+    const parsedAccessPermissions = Array.isArray(accessPermissions) ? accessPermissions : [];
 
     const employee = new Employee({
       company,
@@ -161,51 +229,60 @@ exports.createEmployee = async (req, res) => {
       email,
       password,
       salary,
-      dateOfJoining,
+      dateOfJoining: dateOfJoining ? new Date(dateOfJoining) : undefined,
       shift,
       department: validDepartments, 
       role,
-      designation,
+      designation: validDesignation,
       aadharNumber,
       panNumber,
       userUpi,
-      pfPercentage,
-      esicPercentage,
-      paidLeaves,
-      weeklyHoliday,
+      pfPercentage: pfEnabled === 'true' || pfEnabled === true ? pfPercentage : undefined,
+      esicPercentage: esicEnabled === 'true' || esicEnabled === true ? esicPercentage : undefined,
+      paidLeaves: parsedPaidLeaves,
+      weeklyHoliday: parsedWeeklyHoliday,
       address,
-      accessPermissions,
-      // FIXED: Keep as is
+      accessPermissions: parsedAccessPermissions,
       adharImage,
       panImage,
       profileImage,
-      // NEW: Dynamic array
       documents: dynamicDocuments,
       qrCode
     });
 
+    console.log('💾 CREATE: Saving employee with docs count:', dynamicDocuments.length);
     await employee.save();
-    console.log('✅ Employee saved with documents count:', employee.documents.length);  // ADD: Final log
+    console.log('✅ CREATE: Employee saved! Final docs in DB:', employee.documents.length);
 
     // Remove password from response
     employee.password = undefined;
-
     res.status(201).json({ message: 'Employee created', employee });
   } catch (error) {
-    console.error('Create employee error:', error); // Enhanced logging
+    console.error('❌ CREATE ERROR:', error.message);
+    console.error('❌ Full error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
 
+
 // Controller: Update employee (fixed + dynamic docs)
 exports.updateEmployee = async (req, res) => {
   try {
+    // Log incoming data for debugging
+    console.log('🔍 UPDATE DEBUG - Full req.body keys:', Object.keys(req.body));
+    console.log('🔍 UPDATE DEBUG - newDocumentTypes raw:', { type: typeof req.body.newDocumentTypes, value: req.body.newDocumentTypes });
+    console.log('🔍 UPDATE DEBUG - removeDocuments raw:', { type: typeof req.body.removeDocuments, value: req.body.removeDocuments });
+    console.log('🔍 UPDATE DEBUG - departments raw:', { type: typeof req.body.departments, value: req.body.departments });
+    console.log('🔍 UPDATE DEBUG - req.files keys:', req.files ? Object.keys(req.files) : 'no files');
+    console.log('🔍 UPDATE DEBUG - documents files:', req.files?.documents ? `${req.files.documents.length} file(s)` : 'none');
+
     const { id } = req.params;
     const employee = await Employee.findById(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
     const {
+      company,
       teamMemberName,
       mobileNumber,
       isActive,
@@ -215,7 +292,7 @@ exports.updateEmployee = async (req, res) => {
       salary,
       dateOfJoining,
       shift,
-      departments,  // <-- Changed: Expect 'departments' (plural) from frontend
+      departments,  // Expect array/string/JSON from frontend
       role,
       designation,
       aadharNumber,
@@ -223,148 +300,289 @@ exports.updateEmployee = async (req, res) => {
       userUpi,
       pfPercentage,
       esicPercentage,
-      weeklyHoliday,
       paidLeaves,
+      weeklyHoliday,
       address,
       accessPermissions,
       qrCode,
-      newDocumentTypes,
-      // documents: newDocumentTypes,  // NEW: For adding new dynamic docs
-      removeDocuments,  // NEW: Array of dynamic types to remove, e.g., ["Driving License"]
-      adharImage: adharImageNull,  // NEW: Explicit null to delete fixed
+      newDocumentTypes,  // Expect array (or string for single) from frontend for new docs
+      removeDocuments,  // Expect array (or string for single) of types to remove
+      pfEnabled = false,  // From frontend
+      esicEnabled = false,
+      adharImage: adharImageNull,  // Explicit null to delete fixed image
       panImage: panImageNull,
       profileImage: profileImageNull
     } = req.body;
 
-    // Handle departments update (unchanged)
-    if (departments) {
-      if (!Array.isArray(departments) || departments.length === 0) {
-        return res.status(400).json({ message: 'Invalid departments provided' });
+    // FIXED: Robust departments parsing (handles array/string/JSON/single/multiple)
+    let parsedDepartments = [];
+    if (req.body.departmentsJSON) {  // Frontend JSON fallback
+      try {
+        parsedDepartments = JSON.parse(req.body.departmentsJSON);
+      } catch (e) {
+        console.warn('⚠️ UPDATE: Failed to parse departmentsJSON:', e.message);
       }
-      const validDepartments = [...new Set(departments.filter(id => id && id.trim() !== ''))];
-      if (validDepartments.length === 0) {
-        return res.status(400).json({ message: 'At least one department is required' });
+    } else if (Array.isArray(departments)) {
+      parsedDepartments = departments;
+    } else if (typeof departments === 'string') {
+      // Handle repeated appends as comma-separated or single
+      if (departments.includes(',')) {
+        parsedDepartments = departments.split(',').map(id => id.trim()).filter(Boolean);
+      } else {
+        parsedDepartments = [departments].filter(Boolean);
       }
-      employee.department = validDepartments;  // <-- Fixed: Assign to model field 'department' (as array)
-      console.log('Updating employee departments:', validDepartments); // Debug log
+    }
+    // Also check for repeated 'department' fields (legacy)
+    if (parsedDepartments.length === 0 && req.body.department) {
+      if (Array.isArray(req.body.department)) {
+        parsedDepartments = req.body.department.filter(Boolean);
+      } else {
+        parsedDepartments = [req.body.department].filter(Boolean);
+      }
+    }
+    const validDepartments = [...new Set(parsedDepartments.filter(id => id && id.trim() !== ''))];
+    console.log('📋 UPDATE: Parsed departments:', validDepartments.length, 'IDs:', validDepartments);
+    if (validDepartments.length === 0) {
+      return res.status(400).json({ message: 'At least one department is required' });
+    }
+    employee.department = validDepartments;  // Assign to model field 'department' (array)
+
+    // FIXED: Robust designation parsing (similar to departments)
+    let parsedDesignation = [];
+    if (req.body.designationJSON) {
+      try {
+        parsedDesignation = JSON.parse(req.body.designationJSON);
+      } catch (e) {
+        console.warn('⚠️ UPDATE: Failed to parse designationJSON:', e.message);
+      }
+    } else if (Array.isArray(designation)) {
+      parsedDesignation = designation;
+    } else if (typeof designation === 'string') {
+      if (designation.includes(',')) {
+        parsedDesignation = designation.split(',').map(id => id.trim()).filter(Boolean);
+      } else {
+        parsedDesignation = [designation].filter(Boolean);
+      }
+    }
+    const validDesignation = [...new Set(parsedDesignation.filter(id => id && id.trim() !== ''))];
+    console.log('📋 UPDATE: Parsed designation:', validDesignation.length, 'IDs:', validDesignation);
+    if (validDesignation.length === 0) {
+      return res.status(400).json({ message: 'At least one designation is required' });
+    }
+    employee.designation = validDesignation;
+
+    // Standard field updates
+    if (teamMemberName !== undefined) employee.teamMemberName = teamMemberName;
+    if (mobileNumber !== undefined) employee.mobileNumber = mobileNumber;
+    if (isActive !== undefined) employee.isActive = isActive;
+    if (emergencyMobileNumber !== undefined) employee.emergencyMobileNumber = emergencyMobileNumber;
+    if (email !== undefined) employee.email = email;
+    if (salary !== undefined) employee.salary = salary;  // FIXED: Proper undefined check
+    if (dateOfJoining !== undefined) employee.dateOfJoining = dateOfJoining ? new Date(dateOfJoining) : undefined;
+    if (shift !== undefined) employee.shift = shift;
+    if (role !== undefined) employee.role = role;
+    if (aadharNumber !== undefined) employee.aadharNumber = aadharNumber;
+    if (panNumber !== undefined) employee.panNumber = panNumber;
+    if (userUpi !== undefined) employee.userUpi = userUpi;
+    if (address !== undefined) employee.address = address;
+    if (qrCode !== undefined) employee.qrCode = qrCode;
+
+    // PF/ESIC: Only set percentages if enabled
+    if (pfEnabled === 'true' || pfEnabled === true) {
+      employee.pfEnabled = true;
+      if (pfPercentage !== undefined) employee.pfPercentage = pfPercentage;
+    } else {
+      employee.pfEnabled = false;
+      employee.pfPercentage = undefined;
+    }
+    if (esicEnabled === 'true' || esicEnabled === true) {
+      employee.esicEnabled = true;
+      if (esicPercentage !== undefined) employee.esicPercentage = esicPercentage;
+    } else {
+      employee.esicEnabled = false;
+      employee.esicPercentage = undefined;
     }
 
-    // Standard field updates (unchanged)
-    if (teamMemberName) employee.teamMemberName = teamMemberName;
-    if (mobileNumber) employee.mobileNumber = mobileNumber;
-    if (isActive) employee.isActive = isActive;
-    if (emergencyMobileNumber) employee.emergencyMobileNumber = emergencyMobileNumber;
-    if (email) employee.email = email;
-    if (salary !== undefined) employee.salary = salary;
-    if (dateOfJoining) employee.dateOfJoining = dateOfJoining;
-    if (shift) employee.shift = shift;
-    if (role) employee.role = role;
-    if (designation) employee.designation = designation;
-    if (aadharNumber) employee.aadharNumber = aadharNumber;
-    if (panNumber) employee.panNumber = panNumber;
-    if (userUpi) employee.userUpi = userUpi;
-    if (pfPercentage) employee.pfPercentage = pfPercentage;
-    if (esicPercentage) employee.esicPercentage = esicPercentage;
+    // Arrays: Coerce if needed
+    if (paidLeaves !== undefined) {
+      employee.paidLeaves = Array.isArray(paidLeaves) ? paidLeaves : [];
+    }
+    if (weeklyHoliday !== undefined) {
+      employee.weeklyHoliday = Array.isArray(weeklyHoliday) ? weeklyHoliday : [];
+    }
+    if (accessPermissions !== undefined) {
+      employee.accessPermissions = Array.isArray(accessPermissions) ? accessPermissions : [];
+    }
 
-    if (weeklyHoliday) employee.weeklyHoliday = weeklyHoliday;
-    if (paidLeaves) employee.paidLeaves = paidLeaves;
-    if (address) employee.address = address;
-    if (accessPermissions) employee.accessPermissions = accessPermissions;
-    if (qrCode) employee.qrCode = qrCode;
-
-    // FIXED: Update images if uploaded (unchanged)
-    if (req.files?.adharImage) {
+    // FIXED: Update fixed images if uploaded
+    if (req.files?.adharImage && req.files.adharImage.length > 0) {
+      // Delete old if exists
+      if (employee.adharImage) {
+        const oldPublicId = extractPublicIdFromUrl(employee.adharImage);
+        if (oldPublicId) await deleteFromCloudinary(oldPublicId);
+      }
       employee.adharImage = req.files.adharImage[0].path;
+      console.log('🖼️ UPDATE: Updated adharImage');
     }
-    if (req.files?.panImage) {
+    if (req.files?.panImage && req.files.panImage.length > 0) {
+      if (employee.panImage) {
+        const oldPublicId = extractPublicIdFromUrl(employee.panImage);
+        if (oldPublicId) await deleteFromCloudinary(oldPublicId);
+      }
       employee.panImage = req.files.panImage[0].path;
+      console.log('🖼️ UPDATE: Updated panImage');
     }
-    if (req.files?.profileImage) {
+    if (req.files?.profileImage && req.files.profileImage.length > 0) {
+      if (employee.profileImage) {
+        const oldPublicId = extractPublicIdFromUrl(employee.profileImage);
+        if (oldPublicId) await deleteFromCloudinary(oldPublicId);
+      }
       employee.profileImage = req.files.profileImage[0].path;
+      console.log('🖼️ UPDATE: Updated profileImage');
     }
 
-        // NEW: Handle explicit deletion of fixed images (if body sends null)
+    // NEW: Handle explicit deletion of fixed images (if body sends null)
     if (adharImageNull === null && employee.adharImage) {
       const publicId = extractPublicIdFromUrl(employee.adharImage);
       if (publicId) await deleteFromCloudinary(publicId);
       employee.adharImage = null;
-      console.log('Deleted Aadhar image from Cloudinary');
+      console.log('🗑️ UPDATE: Deleted adharImage from Cloudinary');
     }
     if (panImageNull === null && employee.panImage) {
       const publicId = extractPublicIdFromUrl(employee.panImage);
       if (publicId) await deleteFromCloudinary(publicId);
       employee.panImage = null;
-      console.log('Deleted PAN image from Cloudinary');
+      console.log('🗑️ UPDATE: Deleted panImage from Cloudinary');
     }
     if (profileImageNull === null && employee.profileImage) {
       const publicId = extractPublicIdFromUrl(employee.profileImage);
       if (publicId) await deleteFromCloudinary(publicId);
       employee.profileImage = null;
-      console.log('Deleted Profile image from Cloudinary');
+      console.log('🗑️ UPDATE: Deleted profileImage from Cloudinary');
     }
 
-    // NEW: Handle dynamic document removal (if removeDocuments in body)
-    if (removeDocuments && Array.isArray(removeDocuments) && removeDocuments.length > 0) {
-      const typesToRemove = removeDocuments.filter(type => type && type.trim() !== '');
+    // NEW: Handle dynamic document removal (with coercion for single/string)
+    let parsedRemoveDocuments = [];
+    if (removeDocuments) {
+      if (Array.isArray(removeDocuments)) {
+        parsedRemoveDocuments = removeDocuments;
+      } else if (typeof removeDocuments === 'string') {
+        // Coerce single string to array (fix for single removal)
+        parsedRemoveDocuments = [removeDocuments.trim()].filter(Boolean);
+        console.log('📎 UPDATE: Coerced single string removeDocuments to array:', parsedRemoveDocuments);
+      } else {
+        console.warn('⚠️ UPDATE: Invalid removeDocuments format:', typeof removeDocuments);
+      }
+      console.log('📎 UPDATE: Raw removeDocuments:', typeof removeDocuments, JSON.stringify(removeDocuments));
+      console.log('📎 UPDATE: Parsed removeDocuments:', parsedRemoveDocuments.length, 'items:', parsedRemoveDocuments);
+    }
+
+    const typesToRemove = parsedRemoveDocuments.filter(type => type && type.trim() !== '');
+    if (typesToRemove.length > 0) {
+      console.log('🗑️ UPDATE: Removing docs:', typesToRemove);
       for (const typeToRemove of typesToRemove) {
         const docIndex = employee.documents.findIndex(doc => doc.type.toLowerCase() === typeToRemove.toLowerCase());
         if (docIndex !== -1) {
           const doc = employee.documents[docIndex];
-          await deleteFromCloudinary(doc.publicId);  // Delete from Cloudinary
+          if (doc.publicId) {
+            await deleteFromCloudinary(doc.publicId);  // Delete from Cloudinary
+          }
           employee.documents.splice(docIndex, 1);  // Remove from array
-          console.log(`Removed dynamic document: ${doc.type}`);
+          console.log(`🗑️ UPDATE: Removed dynamic doc: "${doc.type}"`);
         } else {
-          console.warn(`Dynamic document type not found for removal: ${typeToRemove}`);
+          console.warn(`⚠️ UPDATE: Doc type not found for removal: "${typeToRemove}"`);
         }
       }
+      console.log('🗑️ UPDATE: After removal, remaining docs:', employee.documents.length);
+    } else {
+      console.log('ℹ️ UPDATE: Skipping removal (no valid removeDocuments)');
     }
 
-    // NEW: Handle adding new dynamic documents
-    if (newDocumentTypes && Array.isArray(newDocumentTypes) && newDocumentTypes.length > 0) {
-      const types = newDocumentTypes.filter(type => type && type.trim() !== '');
-      if (types.length === 0) {
-        return res.status(400).json({ message: 'Invalid new dynamic document types provided' });
+    // NEW: Handle adding new dynamic documents (with coercion for single/string)
+    let parsedNewDocumentTypes = [];
+    if (newDocumentTypes) {
+      if (Array.isArray(newDocumentTypes)) {
+        parsedNewDocumentTypes = newDocumentTypes;
+      } else if (typeof newDocumentTypes === 'string') {
+        // Coerce single string to array (critical fix for single new doc)
+        parsedNewDocumentTypes = [newDocumentTypes.trim()].filter(Boolean);
+        console.log('📎 UPDATE: Coerced single string newDocumentTypes to array:', parsedNewDocumentTypes);
+      } else {
+        console.warn('⚠️ UPDATE: Invalid newDocumentTypes format:', typeof newDocumentTypes);
       }
-      if (req.files?.documents && Array.isArray(req.files.documents)) {
+      console.log('📎 UPDATE: Raw newDocumentTypes:', typeof newDocumentTypes, JSON.stringify(newDocumentTypes));
+      console.log('📎 UPDATE: Parsed newDocumentTypes:', parsedNewDocumentTypes.length, 'items:', parsedNewDocumentTypes);
+    }
+
+    const types = parsedNewDocumentTypes.filter(type => type && type.trim() !== '');
+    console.log('📎 UPDATE: Filtered new types:', types.length, types);
+
+    if (types.length > 0) {
+      if (req.files?.documents && Array.isArray(req.files.documents) && req.files.documents.length > 0) {
         const files = req.files.documents;
+        console.log('📎 UPDATE: New files received:', files.length, 'details:', files.map((f, i) => ({
+          index: i,
+          name: f.originalname,
+          path: f.path ? f.path.substring(0, 50) + '...' : 'no path',
+          public_id: f.public_id || f.filename
+        })));
+
         if (files.length !== types.length) {
+          console.warn('⚠️ UPDATE: MISMATCH: New types:', types.length, 'vs New files:', files.length);
           return res.status(400).json({ 
             message: `Dynamic docs mismatch: ${types.length} new types but ${files.length} new files` 
           });
         }
-        // Check for duplicates with existing
+
+        // Check for duplicates with existing docs
         const existingTypes = employee.documents.map(doc => doc.type.toLowerCase());
         const newTypesLower = types.map(t => t.toLowerCase());
         const duplicates = newTypesLower.filter(t => existingTypes.includes(t));
         if (duplicates.length > 0) {
           return res.status(400).json({ message: `Duplicate dynamic types not allowed: ${duplicates.join(', ')}` });
         }
+
         // Add new documents
         const newDocs = files.map((file, index) => ({
-          type: types[index].trim(),
+          type: types[index]?.trim() || 'Unknown',
           url: file.path,
-          publicId: file.filename
+          publicId: file.public_id || file.filename,
+          uploadedAt: new Date()
         }));
         employee.documents.push(...newDocs);
-        console.log('Added new dynamic documents:', newDocs.map(d => d.type));
+        console.log('✅ UPDATE: Added new dynamic documents:', newDocs.length, 'items');
+        newDocs.forEach(doc => {
+          console.log(`│   ├── Type: "${doc.type}", URL: ${doc.url?.substring(0, 50)}..., PublicID: ${doc.publicId}`);
+        });
       } else {
+        console.warn('⚠️ UPDATE: No new documents files received (but types present):', req.files?.documents);
         return res.status(400).json({ message: 'Files required for new dynamic document types' });
       }
+    } else {
+      console.log('ℹ️ UPDATE: Skipping new dynamic docs (no valid newDocumentTypes)');
     }
 
-    // Password hashing (fixed: your original code had a bug—salt was used twice)
+    // Password hashing (only if provided)
     if (password) {
       const salt = await bcrypt.genSalt(10);
       employee.password = await bcrypt.hash(password, salt);
+      console.log('🔐 UPDATE: Password hashed');
     }
 
+    console.log('💾 UPDATE: Saving employee with final docs count:', employee.documents.length);
     await employee.save();
+    console.log('✅ UPDATE: Employee saved! Final docs in DB:', employee.documents.length);
+
+    // Remove password from response
+    employee.password = undefined;
     res.json({ message: 'Employee updated', employee });
   } catch (error) {
-    console.error('Update employee error:', error); // Enhanced logging
-    res.status(500).json({ message: 'Server error', error: error.message || error });
+    console.error('❌ UPDATE ERROR:', error.message);
+    console.error('❌ Full error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 // NEW: Get all documents for an employee (fixed + dynamic)
 exports.getEmployeeDocuments = async (req, res) => {
