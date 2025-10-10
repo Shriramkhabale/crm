@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const taskController = require('../controllers/taskController');
-const upload = require('../middleware/uploadImages'); // multer-cloudinary middleware
+const upload = require('../middleware/multerCloudinary');
 
 // Create task with file uploads
 router.post(

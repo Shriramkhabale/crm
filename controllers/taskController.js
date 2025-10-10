@@ -832,35 +832,104 @@ exports.getTaskById = async (req, res) => {
   }
 };
 
-
-// UPDATED: updateTask - Updates parent (future generations use new rules; generates current due if needed after update)
+// UPDATED: updateTask - Parse JSON from FormData; merge existing + new files; handle recurring dates
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await getCompanyIdFromUser  (req.user);
+    const company = await getCompanyIdFromUser(req.user);
     const updateData = req.body;
     console.log("updateData", updateData);
 
-    // Validate repeat fields if updated (unchanged, but uses endDateTime for recurring end)
+    // Parse JSON strings from FormData
+    let assignedToArray = [];
+    if (updateData.assignedTo) {
+      try {
+        assignedToArray = JSON.parse(updateData.assignedTo);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid assignedTo format - must be JSON array of IDs' });
+      }
+    }
+
+    let repeatDaysOfWeek = [];
+    if (updateData.repeatDaysOfWeek) {
+      try {
+        repeatDaysOfWeek = JSON.parse(updateData.repeatDaysOfWeek);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid repeatDaysOfWeek format - must be JSON array' });
+      }
+    }
+
+    let repeatDatesOfMonth = [];
+    if (updateData.repeatDatesOfMonth) {
+      try {
+        repeatDatesOfMonth = JSON.parse(updateData.repeatDatesOfMonth);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid repeatDatesOfMonth format - must be JSON array of numbers' });
+      }
+    }
+
+    // Parse existing files (for merging - JSON strings)
+    let existingImages = [];
+    if (updateData.existingImages) {
+      try {
+        existingImages = JSON.parse(updateData.existingImages);
+      } catch (e) {
+        console.warn('Invalid existingImages format, skipping merge');
+      }
+    }
+    let existingAudios = [];
+    if (updateData.existingAudios) {
+      try {
+        existingAudios = JSON.parse(updateData.existingAudios);
+      } catch (e) {
+        console.warn('Invalid existingAudios format, skipping merge');
+      }
+    }
+    let existingFiles = [];
+    if (updateData.existingFiles) {
+      try {
+        existingFiles = JSON.parse(updateData.existingFiles);
+      } catch (e) {
+        console.warn('Invalid existingFiles format, skipping merge');
+      }
+    }
+
+    // NEW: Parse recurring dates if provided
+    let actualStartDateTime = null;
+    let actualNextFinishDateTime = null;
+    if (updateData.recurringStartDate) {
+      actualStartDateTime = new Date(updateData.recurringStartDate);
+      if (isNaN(actualStartDateTime.getTime())) {
+        return res.status(400).json({ message: 'Invalid recurringStartDate format' });
+      }
+    }
+    if (updateData.recurringEndDate && updateData.repeat) {
+      actualNextFinishDateTime = new Date(updateData.recurringEndDate);
+      if (isNaN(actualNextFinishDateTime.getTime())) {
+        return res.status(400).json({ message: 'Invalid recurringEndDate format' });
+      }
+    }
+
+    // Validate repeat fields if updated (use parsed arrays)
     if (updateData.repeat) {
       if (!updateData.repeatFrequency || !['daily', 'weekly', 'monthly'].includes(updateData.repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
       }
       if (updateData.repeatFrequency === 'weekly') {
-        if (!Array.isArray(updateData.repeatDaysOfWeek) || updateData.repeatDaysOfWeek.length === 0) {
+        if (!Array.isArray(repeatDaysOfWeek) || repeatDaysOfWeek.length === 0) {
           return res.status(400).json({ message: 'repeatDaysOfWeek must be a non-empty array when repeatFrequency is weekly' });
         }
-        for (const day of updateData.repeatDaysOfWeek) {
+        for (const day of repeatDaysOfWeek) {
           if (!validWeekDays.includes(day)) {
             return res.status(400).json({ message: `Invalid day in repeatDaysOfWeek: ${day}` });
           }
         }
       }
       if (updateData.repeatFrequency === 'monthly') {
-        if (!Array.isArray(updateData.repeatDatesOfMonth) || updateData.repeatDatesOfMonth.length === 0) {
+        if (!Array.isArray(repeatDatesOfMonth) || repeatDatesOfMonth.length === 0) {
           return res.status(400).json({ message: 'repeatDatesOfMonth must be a non-empty array when repeatFrequency is monthly' });
         }
-        for (const date of updateData.repeatDatesOfMonth) {
+        for (const date of repeatDatesOfMonth) {
           if (typeof date !== 'number' || date < 1 || date > 31) {
             return res.status(400).json({ message: `Invalid date in repeatDatesOfMonth: ${date}` });
           }
@@ -869,40 +938,77 @@ exports.updateTask = async (req, res) => {
       if (!updateData.endDateTime || new Date(updateData.endDateTime) <= new Date(updateData.startDateTime)) {
         return res.status(400).json({ message: 'endDateTime must be after startDateTime for recurring tasks' });
       }
-    } else if (updateData.repeat === false) {
+    } else if (updateData.repeat === 'false') {
       if (!updateData.nextFollowUpDateTime) {
         return res.status(400).json({ message: 'nextFollowUpDateTime is required when repeat is false' });
       }
     }
 
-    // Validate assignedTo if updated (unchanged)
-    if (updateData.assignedTo) {
-      const assignedToArray = Array.isArray(updateData.assignedTo) ? updateData.assignedTo : [updateData.assignedTo];
+    // Validate assignedTo if updated
+    if (assignedToArray.length > 0) {
       const assignees = await Employee.find({ _id: { $in: assignedToArray }, company });
       if (assignees.length !== assignedToArray.length) {
         return res.status(400).json({ message: 'One or more assigned users not found in your company' });
       }
-      updateData.assignedTo = assignedToArray;
     }
 
-    // Fetch existing
+    // Fetch existing task
     const existingTask = await Task.findOne({ _id: id, company });
     if (!existingTask) {
       return res.status(404).json({ message: 'Task not found or not authorized' });
     }
 
-    // For recurring: Use endDateTime as nextFinishDateTime if updated
-    if (updateData.repeat && updateData.endDateTime) {
-      updateData.nextFinishDateTime = new Date(updateData.endDateTime);
+    // For recurring: Use endDateTime or recurringEndDate as nextFinishDateTime if updated
+    if (updateData.repeat === 'true' && (updateData.endDateTime || actualNextFinishDateTime)) {
+      updateData.nextFinishDateTime = actualNextFinishDateTime || new Date(updateData.endDateTime);
     }
 
-    // Apply updates (preserves existing instances - no auto-regen of past)
+    // NEW: Merge files for updates (existing + new)
+    const newImages = req.files?.images ? req.files.images.map(f => f.path) : [];
+    const newAudios = req.files?.audios ? req.files.audios.map(f => f.path) : [];
+    const newFiles = req.files?.files ? req.files.files.map(f => f.path) : [];
+
+    // Merge: existing DB files + frontend existing + new uploads (deduplicate by path)
+    const mergedImages = [...new Set([
+      ...(existingTask.images || []), 
+      ...existingImages, 
+      ...newImages
+    ])];
+    const mergedAudios = [...new Set([
+      ...(existingTask.audios || []), 
+      ...existingAudios, 
+      ...newAudios
+    ])];
+    const mergedFiles = [...new Set([
+      ...(existingTask.files || []), 
+      ...existingFiles, 
+      ...newFiles
+    ])];
+
+    // Apply updates (preserve existing, override with new data)
     const updatedTaskData = {
       ...existingTask.toObject(),
-      ...updateData,
+      title: updateData.title || existingTask.title,
+      description: updateData.description || existingTask.description,
+      department: updateData.department ? new mongoose.Types.ObjectId(updateData.department) : existingTask.department,
+      assignedTo: assignedToArray.length > 0 ? assignedToArray : existingTask.assignedTo,
+      startDateTime: actualStartDateTime || existingTask.startDateTime,
+      endDateTime: updateData.endDateTime ? new Date(updateData.endDateTime) : existingTask.endDateTime,
+      status: updateData.status || existingTask.status,
+      creditPoints: parseInt(updateData.creditPoints) || existingTask.creditPoints,
+      priority: updateData.priority || existingTask.priority,
+      nextFollowUpDateTime: updateData.nextFollowUpDateTime ? new Date(updateData.nextFollowUpDateTime) : existingTask.nextFollowUpDateTime,
+      nextFinishDateTime: updateData.nextFinishDateTime ? new Date(updateData.nextFinishDateTime) : existingTask.nextFinishDateTime,
+      repeat: updateData.repeat === 'true',
+      repeatFrequency: updateData.repeatFrequency || existingTask.repeatFrequency,
+      repeatDaysOfWeek: repeatDaysOfWeek.length > 0 ? repeatDaysOfWeek : existingTask.repeatDaysOfWeek,
+      repeatDatesOfMonth: repeatDatesOfMonth.length > 0 ? repeatDatesOfMonth : existingTask.repeatDatesOfMonth,
+      images: mergedImages,  // NEW: Merged files
+      audios: mergedAudios,  // NEW: Merged files
+      files: mergedFiles,    // NEW: Merged files
       updatedAt: new Date(),
       isRecurringInstance: false,
-      recurrenceActive: updateData.repeat ? true : false
+      recurrenceActive: updateData.repeat === 'true' ? true : existingTask.recurrenceActive
     };
 
     const task = await Task.findByIdAndUpdate(id, updatedTaskData, { new: true, runValidators: true });
@@ -935,7 +1041,7 @@ exports.updateTask = async (req, res) => {
 
 
 
-// deleteTask (unchanged - deletes parent + all instances if series)
+
 // UPDATED: deleteTask - Deletes parent + all instances (past + future) if recurring
 exports.deleteTask = async (req, res) => {
   try {
