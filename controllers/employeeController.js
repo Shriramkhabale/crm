@@ -90,9 +90,9 @@ exports.createEmployee = async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
 
     // FIXED: Extract uploaded file URLs (unchanged)
-    const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : undefined;
-    const panImage = req.files?.panImage ? req.files.panImage[0].path : undefined;
-    const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : undefined;
+    const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : null;
+    const panImage = req.files?.panImage ? req.files.panImage[0].path : null;
+    const profileImage = req.files?.profileImage ? req.files.profileImage[0].path : null;
 
     // NEW: Handle dynamic documents
     let dynamicDocuments = [];
@@ -117,7 +117,7 @@ exports.createEmployee = async (req, res) => {
         dynamicDocuments = files.map((file, index) => ({
           type: types[index].trim(),
           url: file.path,
-          publicId: file.filename  // Cloudinary public ID
+          publicId: file.public_id || file.filename  // Cloudinary public ID
         }));
         console.log('Created dynamic documents:', dynamicDocuments.map(d => d.type));
       } else {
