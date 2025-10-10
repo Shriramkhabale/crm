@@ -191,7 +191,6 @@ function calculateNextInstanceDate(parentTask, currentDate) {
 
 
 // UPDATED: Generate single next instance (with holiday shift) - Renamed from generateRecurringInstances
-// UPDATED: Generate single instance for due date (today if matching, else next; only if <= today)
 async function generateNextInstance(parentTaskData, companyId, holidays, endDateTime) {
   const now = new Date();
   now.setHours(0, 0, 0, 0);  // Today date-only
@@ -294,7 +293,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
 }
 
 
-
 // UPDATED: createInstance (NEW: Check for holiday and shift to one day before)
 async function createInstance(instanceDate, parentTaskData, parentId, companyObjId, endDateTime, holidays) {
   try {
@@ -389,8 +387,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
   }
 }
 
-
-
 // stopRecurrence (unchanged)
 exports.stopRecurrence = async (req, res) => {
   try {
@@ -427,8 +423,6 @@ exports.resumeRecurrence = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
-
 
 // NEW: Check if a date is a holiday (compares YYYY-MM-DD to avoid time issues)
 function isHoliday(checkDate, holidays) {
@@ -776,9 +770,6 @@ exports.getAllTasks = async (req, res) => {
   }
 };
 
-
-
-
 // UPDATED: getTaskById (fetch ALL instances for parent, including past)
 exports.getTaskById = async (req, res) => {
   try {
@@ -836,211 +827,204 @@ exports.getTaskById = async (req, res) => {
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await getCompanyIdFromUser(req.user);
-    const updateData = req.body;
-    console.log("updateData", updateData);
-
-    // Parse JSON strings from FormData
-    let assignedToArray = [];
-    if (updateData.assignedTo) {
-      try {
-        assignedToArray = JSON.parse(updateData.assignedTo);
-      } catch (e) {
-        return res.status(400).json({ message: 'Invalid assignedTo format - must be JSON array of IDs' });
-      }
-    }
-
-    let repeatDaysOfWeek = [];
-    if (updateData.repeatDaysOfWeek) {
-      try {
-        repeatDaysOfWeek = JSON.parse(updateData.repeatDaysOfWeek);
-      } catch (e) {
-        return res.status(400).json({ message: 'Invalid repeatDaysOfWeek format - must be JSON array' });
-      }
-    }
-
-    let repeatDatesOfMonth = [];
-    if (updateData.repeatDatesOfMonth) {
-      try {
-        repeatDatesOfMonth = JSON.parse(updateData.repeatDatesOfMonth);
-      } catch (e) {
-        return res.status(400).json({ message: 'Invalid repeatDatesOfMonth format - must be JSON array of numbers' });
-      }
-    }
-
-    // Parse existing files (for merging - JSON strings)
-    let existingImages = [];
-    if (updateData.existingImages) {
-      try {
-        existingImages = JSON.parse(updateData.existingImages);
-      } catch (e) {
-        console.warn('Invalid existingImages format, skipping merge');
-      }
-    }
-    let existingAudios = [];
-    if (updateData.existingAudios) {
-      try {
-        existingAudios = JSON.parse(updateData.existingAudios);
-      } catch (e) {
-        console.warn('Invalid existingAudios format, skipping merge');
-      }
-    }
-    let existingFiles = [];
-    if (updateData.existingFiles) {
-      try {
-        existingFiles = JSON.parse(updateData.existingFiles);
-      } catch (e) {
-        console.warn('Invalid existingFiles format, skipping merge');
-      }
-    }
-
-    // NEW: Parse recurring dates if provided
-    let actualStartDateTime = null;
-    let actualNextFinishDateTime = null;
-    if (updateData.recurringStartDate) {
-      actualStartDateTime = new Date(updateData.recurringStartDate);
-      if (isNaN(actualStartDateTime.getTime())) {
-        return res.status(400).json({ message: 'Invalid recurringStartDate format' });
-      }
-    }
-    if (updateData.recurringEndDate && updateData.repeat) {
-      actualNextFinishDateTime = new Date(updateData.recurringEndDate);
-      if (isNaN(actualNextFinishDateTime.getTime())) {
-        return res.status(400).json({ message: 'Invalid recurringEndDate format' });
-      }
-    }
-
-    // Validate repeat fields if updated (use parsed arrays)
-    if (updateData.repeat) {
-      if (!updateData.repeatFrequency || !['daily', 'weekly', 'monthly'].includes(updateData.repeatFrequency)) {
-        return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
-      }
-      if (updateData.repeatFrequency === 'weekly') {
-        if (!Array.isArray(repeatDaysOfWeek) || repeatDaysOfWeek.length === 0) {
-          return res.status(400).json({ message: 'repeatDaysOfWeek must be a non-empty array when repeatFrequency is weekly' });
-        }
-        for (const day of repeatDaysOfWeek) {
-          if (!validWeekDays.includes(day)) {
-            return res.status(400).json({ message: `Invalid day in repeatDaysOfWeek: ${day}` });
-          }
-        }
-      }
-      if (updateData.repeatFrequency === 'monthly') {
-        if (!Array.isArray(repeatDatesOfMonth) || repeatDatesOfMonth.length === 0) {
-          return res.status(400).json({ message: 'repeatDatesOfMonth must be a non-empty array when repeatFrequency is monthly' });
-        }
-        for (const date of repeatDatesOfMonth) {
-          if (typeof date !== 'number' || date < 1 || date > 31) {
-            return res.status(400).json({ message: `Invalid date in repeatDatesOfMonth: ${date}` });
-          }
-        }
-      }
-      if (!updateData.endDateTime || new Date(updateData.endDateTime) <= new Date(updateData.startDateTime)) {
-        return res.status(400).json({ message: 'endDateTime must be after startDateTime for recurring tasks' });
-      }
-    } else if (updateData.repeat === 'false') {
-      if (!updateData.nextFollowUpDateTime) {
-        return res.status(400).json({ message: 'nextFollowUpDateTime is required when repeat is false' });
-      }
-    }
-
-    // Validate assignedTo if updated
-    if (assignedToArray.length > 0) {
-      const assignees = await Employee.find({ _id: { $in: assignedToArray }, company });
-      if (assignees.length !== assignedToArray.length) {
-        return res.status(400).json({ message: 'One or more assigned users not found in your company' });
-      }
-    }
-
     // Fetch existing task
-    const existingTask = await Task.findOne({ _id: id, company });
-    if (!existingTask) {
-      return res.status(404).json({ message: 'Task not found or not authorized' });
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Task not found' 
+      });
     }
-
-    // For recurring: Use endDateTime or recurringEndDate as nextFinishDateTime if updated
-    if (updateData.repeat === 'true' && (updateData.endDateTime || actualNextFinishDateTime)) {
-      updateData.nextFinishDateTime = actualNextFinishDateTime || new Date(updateData.endDateTime);
-    }
-
-    // NEW: Merge files for updates (existing + new)
-    const newImages = req.files?.images ? req.files.images.map(f => f.path) : [];
-    const newAudios = req.files?.audios ? req.files.audios.map(f => f.path) : [];
-    const newFiles = req.files?.files ? req.files.files.map(f => f.path) : [];
-
-    // Merge: existing DB files + frontend existing + new uploads (deduplicate by path)
-    const mergedImages = [...new Set([
-      ...(existingTask.images || []), 
-      ...existingImages, 
-      ...newImages
-    ])];
-    const mergedAudios = [...new Set([
-      ...(existingTask.audios || []), 
-      ...existingAudios, 
-      ...newAudios
-    ])];
-    const mergedFiles = [...new Set([
-      ...(existingTask.files || []), 
-      ...existingFiles, 
-      ...newFiles
-    ])];
-
-    // Apply updates (preserve existing, override with new data)
-    const updatedTaskData = {
-      ...existingTask.toObject(),
-      title: updateData.title || existingTask.title,
-      description: updateData.description || existingTask.description,
-      department: updateData.department ? new mongoose.Types.ObjectId(updateData.department) : existingTask.department,
-      assignedTo: assignedToArray.length > 0 ? assignedToArray : existingTask.assignedTo,
-      startDateTime: actualStartDateTime || existingTask.startDateTime,
-      endDateTime: updateData.endDateTime ? new Date(updateData.endDateTime) : existingTask.endDateTime,
-      status: updateData.status || existingTask.status,
-      creditPoints: parseInt(updateData.creditPoints) || existingTask.creditPoints,
-      priority: updateData.priority || existingTask.priority,
-      nextFollowUpDateTime: updateData.nextFollowUpDateTime ? new Date(updateData.nextFollowUpDateTime) : existingTask.nextFollowUpDateTime,
-      nextFinishDateTime: updateData.nextFinishDateTime ? new Date(updateData.nextFinishDateTime) : existingTask.nextFinishDateTime,
-      repeat: updateData.repeat === 'true',
-      repeatFrequency: updateData.repeatFrequency || existingTask.repeatFrequency,
-      repeatDaysOfWeek: repeatDaysOfWeek.length > 0 ? repeatDaysOfWeek : existingTask.repeatDaysOfWeek,
-      repeatDatesOfMonth: repeatDatesOfMonth.length > 0 ? repeatDatesOfMonth : existingTask.repeatDatesOfMonth,
-      images: mergedImages,  // NEW: Merged files
-      audios: mergedAudios,  // NEW: Merged files
-      files: mergedFiles,    // NEW: Merged files
-      updatedAt: new Date(),
-      isRecurringInstance: false,
-      recurrenceActive: updateData.repeat === 'true' ? true : existingTask.recurrenceActive
+    // Parse JSON strings from FormData (handle empty strings safely)
+    const parseJsonSafe = (str, fallback = []) => {
+      try {
+        return JSON.parse(str || JSON.stringify(fallback));
+      } catch (error) {
+        console.error('❌ JSON parse error:', error);
+        return fallback;
+      }
     };
-
-    const task = await Task.findByIdAndUpdate(id, updatedTaskData, { new: true, runValidators: true });
-
-    // NEW: If recurring and active after update, check/generate current due instance (in case rules changed)
-    let currentInstance = null;
-    if (task.repeat && task.recurrenceActive && task.nextFinishDateTime) {
-      const holidays = await getHolidaysForPeriod(company, task.startDateTime, task.nextFinishDateTime);
-      currentInstance = await generateNextInstance(task.toObject(), company, holidays, task.nextFinishDateTime);
-      if (currentInstance) {
-        console.log(`✅ Generated current due instance after update for task ${id}: ${currentInstance.startDateTime.toISOString()}`);
+    // Basic fields
+    const assignedTo = parseJsonSafe(req.body.assignedTo, []);
+    const existingImages = parseJsonSafe(req.body.existingImages, []);
+    const existingAudios = parseJsonSafe(req.body.existingAudios, []);
+    const existingFiles = parseJsonSafe(req.body.existingFiles, []);
+    // Removed attachments (for deletions)
+    const removedImages = parseJsonSafe(req.body.removedImages, []);
+    const removedAudios = parseJsonSafe(req.body.removedAudios, []);
+    const removedFiles = parseJsonSafe(req.body.removedFiles, []);
+    // Other fields
+    const title = req.body.title?.trim() || task.title;
+    const description = req.body.description?.trim() || task.description;
+    const department = req.body.department?.trim() || task.department;
+const priority = req.body.priority?.toLowerCase() || task.priority?.toLowerCase() || 'medium';
+    const status = req.body.status?.toLowerCase() || task.status || 'pending';
+    const creditPoints = parseInt(req.body.creditPoints) || task.creditPoints || 0;
+    // Date fields (parse ISO strings safely)
+    const startDateTime = req.body.startDateTime ? new Date(req.body.startDateTime) : task.startDateTime;
+    const endDateTime = req.body.endDateTime ? new Date(req.body.endDateTime) : task.endDateTime;
+    const nextFollowUpDateTime = req.body.nextFollowUpDateTime ? new Date(req.body.nextFollowUpDateTime) : task.nextFollowUpDateTime;
+    // Validate dates
+    if (startDateTime && isNaN(startDateTime.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid start date' });
+    }
+    if (endDateTime && isNaN(endDateTime.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid end date' });
+    }
+    if (nextFollowUpDateTime && isNaN(nextFollowUpDateTime.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid next follow-up date' });
+    }
+    // Repeat/recurring fields
+    const repeat = req.body.repeat === 'true' || (req.body.repeat === true);
+    const repeatFrequency = req.body.repeatFrequency || task.repeatFrequency || 'daily';
+    const repeatDaysOfWeek = parseJsonSafe(req.body.repeatDaysOfWeek, task.repeatDaysOfWeek || []);
+    const repeatDatesOfMonth = parseJsonSafe(req.body.repeatDatesOfMonth, task.repeatDatesOfMonth || []);
+    const recurringStartDate = req.body.recurringStartDate ? new Date(req.body.recurringStartDate) : task.recurringStartDate;
+    const recurringEndDate = req.body.recurringEndDate ? new Date(req.body.recurringEndDate) : task.recurringEndDate;
+    const nextFinishDateTime = req.body.nextFinishDateTime ? new Date(req.body.nextFinishDateTime) : task.nextFinishDateTime;
+    // Validate recurring dates if repeat is enabled
+    if (repeat) {
+      if (recurringStartDate && isNaN(recurringStartDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid recurring start date' });
+      }
+      if (recurringEndDate && isNaN(recurringEndDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid recurring end date' });
+      }
+if (recurringStartDate && recurringEndDate && recurringEndDate <= recurringStartDate) {
+        return res.status(400).json({ success: false, message: 'Recurring end date must be after start date' });
       }
     }
-
-    console.log(`Task updated: ID ${id}, new repeat: ${task.repeat}, new endDateTime: ${task.endDateTime}`);
-
-    await task.populate('assignedTo', 'firstName lastName role');
-    await task.populate('createdBy', 'firstName lastName role');
-
-    res.json({
+    // Company and createdBy (preserve or set if needed)
+    const company = req.body.company || task.company;
+    const createdBy = task.createdBy;  // Preserve original creator
+    // UPDATED: Handle attachments – Filter removals, merge existing + new
+    // Images
+    let currentImages = task.images || [];
+    currentImages = currentImages.filter(url => !removedImages.includes(url));  // Remove deleted
+    currentImages = [...new Set([...currentImages, ...existingImages])];  // Merge remaining existing (dedupe)
+    if (req.files?.images && Array.isArray(req.files.images)) {
+      const newImageUrls = req.files.images.map(file => file.path || file.secure_url).filter(Boolean);
+      currentImages = [...currentImages, ...newImageUrls];
+    }
+    task.images = currentImages;
+    // Audios
+    let currentAudios = task.audios || [];
+    currentAudios = currentAudios.filter(url => !removedAudios.includes(url));
+    currentAudios = [...new Set([...currentAudios, ...existingAudios])];
+    if (req.files?.audios && Array.isArray(req.files.audios)) {
+      const newAudioUrls = req.files.audios.map(file => file.path || file.secure_url).filter(Boolean);
+      currentAudios = [...currentAudios, ...newAudioUrls];
+    }
+    task.audios = currentAudios;
+    // Files
+    let currentFiles = task.files || [];
+    currentFiles = currentFiles.filter(url => !removedFiles.includes(url));
+    currentFiles = [...new Set([...currentFiles, ...existingFiles])];
+    if (req.files?.files && Array.isArray(req.files.files)) {
+      const newFileUrls = req.files.files.map(file => file.path || file.secure_url).filter(Boolean);
+      currentFiles = [...currentFiles, ...newFileUrls];
+    }
+    task.files = currentFiles;
+    // OPTIONAL: Delete removed files from Cloudinary (uncomment if needed)
+    /*
+    const deleteFromCloudinary = async (urls, resourceType = 'image') => {
+      for (const url of urls) {
+        try {
+          const publicId = cloudinary.utils.extractPublicId(url);
+          if (publicId) {
+            await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+            console.log(`🗑️ Deleted from Cloudinary: ${publicId} (${resourceType})`);
+          }
+        } catch (delError) {
+          console.error(`❌ Cloudinary delete failed for ${url}:`, delError);
+        }
+      }
+    };
+    // Delete removed files
+    await deleteFromCloudinary(removedImages, 'image');
+    await deleteFromCloudinary(removedAudios, 'video');  // Or 'raw' for audio
+    await deleteFromCloudinary(removedFiles, 'raw');  // Adjust resource_type as per your setup
+    */
+    // Update task fields
+    task.title = title;
+    task.description = description;
+    task.assignedTo = assignedTo;  // Array of employee IDs
+    task.department = department;  // Department ID
+    task.priority = priority;
+    task.status = status;
+    task.creditPoints = creditPoints;
+    // Dates
+    if (startDateTime) task.startDateTime = startDateTime;
+    if (endDateTime) task.endDateTime = endDateTime;
+    if (nextFollowUpDateTime) task.nextFollowUpDateTime = nextFollowUpDateTime;
+// Repeat/recurring
+    task.repeat = repeat;
+    if (repeat) {
+      task.repeatFrequency = repeatFrequency;
+      task.repeatDaysOfWeek = repeatDaysOfWeek;
+      task.repeatDatesOfMonth = repeatDatesOfMonth;
+      if (recurringStartDate) task.recurringStartDate = recurringStartDate;
+      if (recurringEndDate) task.recurringEndDate = recurringEndDate;
+      if (nextFinishDateTime) task.nextFinishDateTime = nextFinishDateTime;
+    }
+    // Preserve other fields
+    task.company = company;
+    task.createdBy = createdBy;
+    task.updatedAt = new Date();
+    // Validate required fields
+    if (!title.trim()) {
+      return res.status(400).json({ success: false, message: 'Title is required' });
+    }
+    if (!assignedTo.length) {
+      return res.status(400).json({ success: false, message: 'At least one assignee is required' });
+    }
+    if (!department) {
+      return res.status(400).json({ success: false, message: 'Department is required' });
+    }
+    // Save updated task
+    const updatedTask = await task.save();
+    // Ensure attachment fields are arrays in response (even if empty)
+    updatedTask.images = updatedTask.images || [];
+    updatedTask.audios = updatedTask.audios || [];
+    updatedTask.files = updatedTask.files || [];
+ // Logging for debugging
+    console.log('🔄 Task updated successfully:', {
+      id: updatedTask._id,
+      title: updatedTask.title,
+      attachments: {
+        images: updatedTask.images.length,
+        audios: updatedTask.audios.length,
+        files: updatedTask.files.length,
+        removed: { images: removedImages.length, audios: removedAudios.length, files: removedFiles.length }
+      },
+      assignees: updatedTask.assignedTo.length
+    });
+    res.status(200).json({
+      success: true,
       message: 'Task updated successfully',
-      task,
-      currentInstance: currentInstance ? { ...currentInstance.toObject(), isRecurringInstance: true, newlyGenerated: true } : null
+      task: updatedTask  // Full task with attachments
     });
   } catch (error) {
-    console.error('Update task error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('❌ Update task error:', error);
+    
+    // Handle specific errors (e.g., validation, DB)
+    let statusCode = 500;
+    let message = 'Failed to update task';
+    
+    if (error.name === 'ValidationError') {
+      statusCode = 400;
+      message = 'Validation error: ' + Object.values(error.errors).map(e => e.message).join(', ');
+    } else if (error.message.includes('required')) {
+      statusCode = 400;
+      message = error.message;
+    }
+    res.status(statusCode).json({
+      success: false,
+      message: message,
+      error: error.message  // For debugging; remove in production
+    });
   }
 };
-
-
-
 
 // UPDATED: deleteTask - Deletes parent + all instances (past + future) if recurring
 exports.deleteTask = async (req, res) => {
