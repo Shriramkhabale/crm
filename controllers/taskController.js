@@ -440,37 +440,85 @@ function isHoliday(checkDate, holidays) {
 }
 
 
-// createTask (unchanged - saves only parent)
-// UPDATED: createTask - Save parent + generate first instance if startDateTime matches current date/today (uses new matching logic)
 exports.createTask = async (req, res) => {
   try {
-    const {
-      title, description, department, assignedTo, startDateTime, endDateTime, repeat, creditPoints,
-      repeatFrequency, repeatDaysOfWeek, repeatDatesOfMonth, priority, nextFollowUpDateTime,
-      createdBy, status, company: bodyCompany
-    } = req.body;
-    const company = req.user.companyId || bodyCompany || req.user.userId;
+    // Parse JSON strings from FormData
+    let assignedToArray = [];
+    if (req.body.assignedTo) {
+      try {
+        assignedToArray = JSON.parse(req.body.assignedTo);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid assignedTo format - must be JSON array of IDs' });
+      }
+    }
 
-    if (!title || !department || !assignedTo || !startDateTime || !endDateTime) {
+    let repeatDaysOfWeek = [];
+    if (req.body.repeatDaysOfWeek) {
+      try {
+        repeatDaysOfWeek = JSON.parse(req.body.repeatDaysOfWeek);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid repeatDaysOfWeek format - must be JSON array' });
+      }
+    }
+
+    let repeatDatesOfMonth = [];
+    if (req.body.repeatDatesOfMonth) {
+      try {
+        repeatDatesOfMonth = JSON.parse(req.body.repeatDatesOfMonth);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid repeatDatesOfMonth format - must be JSON array of numbers' });
+      }
+    }
+
+    const {
+      title, description, department, startDateTime, endDateTime, repeat, creditPoints,
+      repeatFrequency, priority, nextFollowUpDateTime, createdBy, status, company: bodyCompany,
+      recurringStartDate, recurringEndDate  // NEW: From frontend
+    } = req.body;
+
+    const company = req.user.companyId || bodyCompany;
+
+    if (!title || !department || assignedToArray.length === 0 || !startDateTime || !endDateTime) {
       return res.status(400).json({ message: 'Title, department, assignedTo, startDateTime, and endDateTime are required' });
     }
 
-    const assignedToArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    // Validate assignees exist in company
     const assignee = await Employee.find({ _id: { $in: assignedToArray }, company: company.toString() });
     if (assignee.length !== assignedToArray.length) {
       return res.status(400).json({ message: 'One or more assigned users not found in your company' });
     }
 
+    // Parse dates
     const actualStartDateTime = new Date(startDateTime);
     const actualEndDateTime = new Date(endDateTime);
-    const actualNextFinishDateTime = repeat ? actualEndDateTime : undefined;
+    let actualNextFinishDateTime = repeat ? actualEndDateTime : undefined;
 
+    // NEW: Override with recurring dates if provided
+    if (recurringStartDate) {
+      const recurringStart = new Date(recurringStartDate);
+      if (!isNaN(recurringStart.getTime())) {
+        actualStartDateTime = recurringStart;
+      } else {
+        return res.status(400).json({ message: 'Invalid recurringStartDate format' });
+      }
+    }
+    if (recurringEndDate && repeat) {
+      const recurringEnd = new Date(recurringEndDate);
+      if (!isNaN(recurringEnd.getTime())) {
+        actualNextFinishDateTime = recurringEnd;
+      } else {
+        return res.status(400).json({ message: 'Invalid recurringEndDate format' });
+      }
+    }
+
+    if (actualNextFinishDateTime <= actualStartDateTime) {
+      return res.status(400).json({ message: 'endDateTime must be after startDateTime for recurring tasks' });
+    }
+
+    // Repeat validation (unchanged, but use parsed arrays)
     if (repeat) {
       if (!repeatFrequency || !['daily', 'weekly', 'monthly'].includes(repeatFrequency)) {
         return res.status(400).json({ message: 'repeatFrequency must be one of daily, weekly, or monthly when repeat is true' });
-      }
-      if (actualNextFinishDateTime <= actualStartDateTime) {
-        return res.status(400).json({ message: 'endDateTime must be after startDateTime for recurring tasks' });
       }
       if (repeatFrequency === 'weekly') {
         if (!Array.isArray(repeatDaysOfWeek) || repeatDaysOfWeek.length === 0) {
@@ -498,42 +546,40 @@ exports.createTask = async (req, res) => {
       }
     }
 
-    // Files (unchanged)
+    // Files from multer (unchanged)
     const images = req.files?.images ? req.files.images.map(f => f.path) : [];
     const audios = req.files?.audios ? req.files.audios.map(f => f.path) : [];
     const files = req.files?.files ? req.files.files.map(f => f.path) : [];
 
     const taskData = {
-      title, description, department, assignedTo: assignedToArray,
+      title, description, department: new mongoose.Types.ObjectId(department), assignedTo: assignedToArray,
       startDateTime: actualStartDateTime, endDateTime: actualEndDateTime,
-      repeat, creditPoints, repeatFrequency: repeat ? repeatFrequency : undefined,
+      repeat: repeat === 'true', creditPoints: parseInt(creditPoints) || 0, 
+      repeatFrequency: repeat ? repeatFrequency : undefined,
       repeatDaysOfWeek: repeat && repeatFrequency === 'weekly' ? repeatDaysOfWeek : undefined,
       repeatDatesOfMonth: repeat && repeatFrequency === 'monthly' ? repeatDatesOfMonth : undefined,
       priority: priority || 'medium',
       nextFollowUpDateTime: !repeat ? new Date(nextFollowUpDateTime) : undefined,
       nextFinishDateTime: actualNextFinishDateTime,
-      company: new mongoose.Types.ObjectId(company), status, createdBy: new mongoose.Types.ObjectId(createdBy),
+      company: new mongoose.Types.ObjectId(company), status: status || 'pending', 
+      createdBy: new mongoose.Types.ObjectId(createdBy),
       images, audios, files,
-      isRecurringInstance: false,  // Always false for new tasks (parent or one-time)
-      recurrenceActive: repeat ? true : false  // Active only if recurring
+      isRecurringInstance: false,
+      recurrenceActive: repeat ? true : false
     };
 
     const task = new Task(taskData);
     await task.save();
 
     let firstInstance = null;
-    if (repeat && task.recurrenceActive) {
-      // Fetch holidays for the full period
+    if (task.repeat && task.recurrenceActive) {
       const holidays = await getHolidaysForPeriod(company, actualStartDateTime, actualNextFinishDateTime);
-
-      // UPDATED: Generate first instance if startDateTime date matches current/today pattern
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const startDateOnly = new Date(actualStartDateTime);
       startDateOnly.setHours(0, 0, 0, 0);
 
-      // Use new logic: Check if startDateTime matches the recurrence pattern for "today" (but use startDateTime as base)
-      const dueForStart = calculateNextInstanceDate(task.toObject(), startDateOnly);  // Treat startDate as "current" for first check
+      const dueForStart = calculateNextInstanceDate(task.toObject(), startDateOnly);
       if (dueForStart && dueForStart.toISOString().split('T')[0] === startDateOnly.toISOString().split('T')[0] && startDateOnly >= today) {
         firstInstance = await generateNextInstance(task.toObject(), company, holidays, actualNextFinishDateTime);
         if (firstInstance) {
@@ -546,7 +592,7 @@ exports.createTask = async (req, res) => {
       }
     }
 
-    console.log(`Task created: ${repeat ? 'Recurring parent' : 'One-time task'} with ID ${task._id}, repeat: ${repeat}`);
+    console.log(`Task created: ${task.repeat ? 'Recurring parent' : 'One-time task'} with ID ${task._id}, repeat: ${task.repeat}`);
 
     // Populate
     await task.populate('assignedTo', 'firstName lastName role');
