@@ -17,6 +17,8 @@ const taskSchema = new mongoose.Schema({
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   nextFollowUpDateTime: { type: Date }, 
   nextFinishDateTime: { type: Date },
+   recurringStartDate: { type: Date },
+  recurringEndDate: { type: Date },
   images: [{ type: String }],  
   audios: [{ type: String }],  
   files: [{ type: String }], 
