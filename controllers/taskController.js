@@ -483,11 +483,10 @@ exports.createTask = async (req, res) => {
     }
 
     // Parse dates
-    const actualStartDateTime = new Date(startDateTime);
-    const actualEndDateTime = new Date(endDateTime);
+    let  actualStartDateTime = new Date(startDateTime);
+    let  actualEndDateTime = new Date(endDateTime);
     let actualNextFinishDateTime = repeat ? actualEndDateTime : undefined;
 
-    // NEW: Override with recurring dates if provided
     if (recurringStartDate) {
       const recurringStart = new Date(recurringStartDate);
       if (!isNaN(recurringStart.getTime())) {
