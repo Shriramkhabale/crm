@@ -80,7 +80,7 @@ const employeeSchema = new mongoose.Schema({
     'update_leave',
     'delete_leave',
     'leave_request',
-    'leaveAproval',
+    'leave_Aproval',
     'leave_type',
 
 
