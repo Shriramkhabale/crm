@@ -79,6 +79,9 @@ const employeeSchema = new mongoose.Schema({
     'create_leave',
     'update_leave',
     'delete_leave',
+    'leave_request',
+    'leaveAproval',
+    'leave_type',
 
 
     'list_franchise',
