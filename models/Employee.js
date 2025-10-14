@@ -109,10 +109,12 @@ const employeeSchema = new mongoose.Schema({
 
     'business_profile',
 
-    'list_project_manager',
-    'create_project_manager',
-    'update_project_manager',
-    'delete_project_manager',
+    'project_dashboard',
+    'projects',
+    'project_employee_lists',
+    'project_tracker',
+    'project_tasks',
+    'project_reports',
 
    'customer_support', 
    'com_tickets', 
