@@ -47,12 +47,7 @@ const deleteFromCloudinary = async (publicId) => {
 // Controller: Create employee (fixed + dynamic docs)
 exports.createEmployee = async (req, res) => {
   try {
-    // Log incoming data (enhanced for docs)
-    console.log('🔍 CREATE DEBUG - Full req.body keys:', Object.keys(req.body));
-    console.log('🔍 CREATE DEBUG - documentTypes raw:', { type: typeof req.body.documentTypes, value: req.body.documentTypes });
-    console.log('🔍 CREATE DEBUG - req.files keys:', req.files ? Object.keys(req.files) : 'no files');
-    console.log('🔍 CREATE DEBUG - documents files:', req.files?.documents ? `${req.files.documents.length} file(s)` : 'none');
-
+ 
     const {
       company,
       teamMemberName,

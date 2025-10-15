@@ -30,12 +30,11 @@ const employeeSchema = new mongoose.Schema({
   default: [],
   enum: [
     'dashboard',
-    'leads_dashboard',
-    'leads_leads',
-    'leads_customer',
-    'leads_product',
-    'lead_report',
-    'leads_workflow',
+    'lead_management',
+    'add_leads',
+    'link_generator',
+    'edit_lead',
+    'assign_lead',
 
     'list_task',
     'create_task',
@@ -45,11 +44,11 @@ const employeeSchema = new mongoose.Schema({
     'shift_task',
     'create_credit_points',
     'credit_points',
+    'task_performance',
 
     'settings',
     'settings_category',
     'settings_shift',
-    'settings_leads_status',
     'settings_customer_group',
     'settings_leave_type',
    
@@ -72,8 +71,9 @@ const employeeSchema = new mongoose.Schema({
     'create_teammember',
     'update_teammember',
     'delete_teammember',
+    'employee_report',
 
-    'attendance',
+    'daily_attendace',
 
     'list_leave',
     'create_leave',
