@@ -592,11 +592,13 @@ exports.createTask = async (req, res) => {
 
 
     // Updated: Generate and assign taskId per company after saving
-    const nextSeq = await getNextSequenceValue(company, 'taskid');
-    task.taskId = `T${nextSeq}`;
-    await task.save();  // Save again with taskId
+     if (!task.repeat) {
+      const nextSeq = await getNextSequenceValue(company, 'taskid');
+      task.taskId = `T${nextSeq}`;
+      await task.save();  // Save again with taskId
+    }
 
-    
+
     let firstInstance = null;
     if (task.repeat && task.recurrenceActive) {
       const holidays = await getHolidaysForPeriod(company, actualStartDateTime, actualNextFinishDateTime);
