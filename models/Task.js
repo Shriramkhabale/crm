@@ -18,7 +18,7 @@ const taskSchema = new mongoose.Schema({
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   nextFollowUpDateTime: { type: Date }, 
   nextFinishDateTime: { type: Date },
-   recurringStartDate: { type: Date },
+  recurringStartDate: { type: Date },
   recurringEndDate: { type: Date },
   images: [{ type: String }],  
   audios: [{ type: String }],  
@@ -41,7 +41,6 @@ taskSchema.virtual('isOverdue').get(function() {
 // Include virtuals in JSON
 taskSchema.set('toJSON', { virtuals: true });
 taskSchema.set('toObject', { virtuals: true });
-
 
 taskSchema.index({ company: 1, repeat: 1, recurrenceActive: 1 });  // Fast recurring parents
 taskSchema.index({ parentTask: 1, startDateTime: 1 });  // Fast instance lookup by date
