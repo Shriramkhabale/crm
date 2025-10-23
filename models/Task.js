@@ -46,5 +46,4 @@ taskSchema.index({ company: 1, repeat: 1, recurrenceActive: 1 });  // Fast recur
 taskSchema.index({ parentTask: 1, startDateTime: 1 });  // Fast instance lookup by date
 taskSchema.index({ startDateTime: 1 });  // Sort by date
 
-
 module.exports = mongoose.model('Task', taskSchema);

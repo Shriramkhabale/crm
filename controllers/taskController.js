@@ -1,10 +1,25 @@
 // controller/taskController.js
 
 const Task = require('../models/Task');
+const Counter = require('../models/Counter');  // Import Counter model
 const Employee = require('../models/Employee');
 const TaskStatusUpdate = require('../models/TaskStatusUpdate');
 const Holiday = require('../models/Holiday'); 
 const mongoose = require('mongoose');
+
+
+// Updated: Helper to get next sequential taskId per company (e.g., T1, T2 for each company)
+async function getNextSequenceValue(companyId, sequenceName = 'taskid') {
+  const fullSequenceName = `${sequenceName}_${companyId}`;  // e.g., taskid_64f1a2b3c4d5e6f7g8h9i0j
+  const sequenceDoc = await Counter.findByIdAndUpdate(
+    fullSequenceName,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return sequenceDoc.seq;
+}
+
+
 
 async function getCompanyIdFromUser (user) {
   if (user.role === 'company') {
@@ -289,6 +304,12 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
   await instance.save();
   const shiftMsg = workingDate.toISOString().split('T')[0] !== dueDate.toISOString().split('T')[0] ? '(shifted due to holiday)' : '';
   console.log(`✅ Generated instance for current due date ${dueDate.toISOString().split('T')[0]} → ${startDt.toISOString()} ${shiftMsg}`);
+  
+   // Updated: Generate and assign taskId per company after saving
+  const nextSeq = await getNextSequenceValue(companyId, 'taskid');
+  instance.taskId = `T${nextSeq}`;
+  await instance.save();  // Save again with taskId
+
   return instance;
 }
 
@@ -379,6 +400,11 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
 
     const shiftMsg = isHoliday(instanceDate, holidays) ? 'shifted ' : '';
     console.log(`Created ${shiftMsg}instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
+  
+    // Updated: Generate and assign taskId per company after saving
+    const nextSeq = await getNextSequenceValue(companyObjId.toString(), 'taskid');
+    instance.taskId = `T${nextSeq}`;
+    await instance.save();  // Save again with taskId
 
     return instance;
   } catch (error) {
@@ -564,6 +590,13 @@ exports.createTask = async (req, res) => {
     const task = new Task(taskData);
     await task.save();
 
+
+    // Updated: Generate and assign taskId per company after saving
+    const nextSeq = await getNextSequenceValue(company, 'taskid');
+    task.taskId = `T${nextSeq}`;
+    await task.save();  // Save again with taskId
+
+    
     let firstInstance = null;
     if (task.repeat && task.recurrenceActive) {
       const holidays = await getHolidaysForPeriod(company, actualStartDateTime, actualNextFinishDateTime);
