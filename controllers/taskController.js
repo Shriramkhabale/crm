@@ -41,7 +41,6 @@ async function getHolidaysForPeriod(companyId, startDate, endDate) {
       company: new mongoose.Types.ObjectId(companyId),
       date: { $gte: startDate, $lte: endDate }
     }).select('date name').sort({ date: 1 });
-    console.log(`Fetched ${holidays.length} holidays for period ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
     return holidays;
   } catch (error) {
     console.error('Error fetching holidays:', error);
@@ -62,7 +61,6 @@ const LOOKAHEAD_DAYS = 3;
 
 async function generateRecurringInstances(parentTaskData, companyId, generateNextOnly = false) {
   if (!parentTaskData.repeat || !parentTaskData.recurrenceActive || !parentTaskData.nextFinishDateTime) {
-    console.log('Skipping generation: repeat disabled or no end date');
     return [];
   }
 
@@ -74,13 +72,11 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
     const now = new Date();
     const nextDate = calculateNextInstanceDate(parentTaskData, now);
     if (!nextDate) {
-      console.log('No next date calculated');
       return [];
     }
 
     const endDate = new Date(parentTaskData.nextFinishDateTime);
     if (nextDate > endDate) {
-      console.log('Next date beyond recurrence end date');
       return [];
     }
 
@@ -95,7 +91,6 @@ async function generateRecurringInstances(parentTaskData, companyId, generateNex
     });
 
     if (existing) {
-      console.log('Next instance already exists:', startDt.toISOString());
       return [];
     }
 
@@ -135,7 +130,6 @@ function shiftToPreviousNonHoliday(date, holidays, minStartDate) {
     return null;  // Skip
   }
 
-  console.log(`Shifted ${date.toISOString().split('T')[0]} to ${shiftedDate.toISOString().split('T')[0]} (${attempts} holiday(s) skipped)`);
   return shiftedDate;
 }
 
@@ -212,13 +206,11 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
 
   const dueDate = calculateNextInstanceDate(parentTaskData, now);  // Now includes today if matching
   if (!dueDate) {
-    console.log('No due date calculated for frequency:', parentTaskData.repeatFrequency);
     return null;
   }
 
   // NEW: Only generate if dueDate <= today (focus on current/past due; future on next call)
   if (dueDate > now) {
-    console.log(`Due date ${dueDate.toISOString().split('T')[0]} is in future - will generate on next list call`);
     return null;
   }
 
@@ -228,13 +220,11 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
   // Shift for holidays if needed (applied to dueDate, e.g., today)
   const workingDate = shiftToPreviousNonHoliday(dueDate, holidays, parentStartDate);
   if (!workingDate) {
-    console.log(`Skipping instance for ${dueDate.toISOString().split('T')[0]} - no valid working date after shift`);
     return null;
   }
 
   // Ensure shifted date is still <= today (don't generate future after shift)
   if (workingDate > now) {
-    console.log(`Shifted date ${workingDate.toISOString().split('T')[0]} is now in future - skipping`);
     return null;
   }
 
@@ -242,7 +232,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
   const endDate = new Date(endDateTime);
   endDate.setHours(23, 59, 59, 999);
   if (workingDate > endDate || workingDate < parentStartDate) {
-    console.log(`Skipping instance: ${workingDate.toISOString().split('T')[0]} outside range`);
     return null;
   }
 
@@ -255,7 +244,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
     company: new mongoose.Types.ObjectId(companyId)
   });
   if (existing) {
-    console.log(`Instance already exists for ${startDt.toISOString()}`);
     return existing;
   }
 
@@ -263,7 +251,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
   if (parentTaskData.repeatFrequency === 'monthly') {
     const expectedDays = parentTaskData.repeatDatesOfMonth;
     if (!expectedDays.includes(workingDate.getDate())) {
-      console.log(`Invalid monthly day after shift: ${workingDate.getDate()} not in ${expectedDays} - skipping`);
       return null;
     }
   } else if (parentTaskData.repeatFrequency === 'weekly') {
@@ -271,7 +258,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
     const workingDayNum = workingDate.getDay();
     const matchingDays = parentTaskData.repeatDaysOfWeek.map(day => daysMap[day]);
     if (!matchingDays.includes(workingDayNum)) {
-      console.log(`Invalid weekly day after shift: ${workingDayNum} not in ${matchingDays} - skipping`);
       return null;
     }
   }
@@ -303,7 +289,6 @@ async function generateNextInstance(parentTaskData, companyId, holidays, endDate
 
   await instance.save();
   const shiftMsg = workingDate.toISOString().split('T')[0] !== dueDate.toISOString().split('T')[0] ? '(shifted due to holiday)' : '';
-  console.log(`✅ Generated instance for current due date ${dueDate.toISOString().split('T')[0]} → ${startDt.toISOString()} ${shiftMsg}`);
   
    // Updated: Generate and assign taskId per company after saving
   const nextSeq = await getNextSequenceValue(companyId, 'taskid');
@@ -325,7 +310,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
 
     // Skip if instance date is before now (past)
     if (workingDate < now) {
-      console.log(`Skipping past date: ${workingDate.toISOString()}`);
       return null;
     }
 
@@ -338,7 +322,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
       workingDate.setHours(0, 0, 0, 0);
 
       if (workingDate < now) {
-        console.log(`Shifted date is in past, skipping instance`);
         return null;
       }
     }
@@ -351,7 +334,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
     endDt.setHours(parentTaskData.endDateTime.getHours(), parentTaskData.endDateTime.getMinutes(), 59, 999);
 
     if (endDt > endDateTime || startDt > endDateTime) {
-      console.log(`Skipping beyond end date: ${startDt.toISOString()}`);
       return null;
     }
 
@@ -362,7 +344,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
       company: companyObjId
     });
     if (existing) {
-      console.log(`Existing instance found for date: ${startDt.toISOString()}`);
       return existing;
     }
 
@@ -370,7 +351,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
     if (parentTaskData.repeatFrequency === 'monthly') {
       const expectedDay = workingDate.getDate();
       if (!parentTaskData.repeatDatesOfMonth.includes(expectedDay)) {
-        console.log(`Invalid monthly day after shift: ${expectedDay} (not in selected dates)`);
         return null;
       }
     }
@@ -399,7 +379,6 @@ async function createInstance(instanceDate, parentTaskData, parentId, companyObj
     await instance.save();
 
     const shiftMsg = isHoliday(instanceDate, holidays) ? 'shifted ' : '';
-    console.log(`Created ${shiftMsg}instance: ${startDt.toISOString()} to ${endDt.toISOString()}`);
   
     // Updated: Generate and assign taskId per company after saving
     const nextSeq = await getNextSequenceValue(companyObjId.toString(), 'taskid');
@@ -471,7 +450,8 @@ exports.createTask = async (req, res) => {
         return res.status(400).json({ message: 'Invalid assignedTo format - must be JSON array of IDs' });
       }
     }
-
+    console.log("req.user--",req.user);
+    
     let repeatDaysOfWeek = [];
     if (req.body.repeatDaysOfWeek) {
       try {
@@ -581,7 +561,9 @@ exports.createTask = async (req, res) => {
       nextFollowUpDateTime: !repeat ? new Date(nextFollowUpDateTime) : undefined,
       nextFinishDateTime: actualNextFinishDateTime,
       company: new mongoose.Types.ObjectId(company), status: status || 'pending', 
-      createdBy: new mongoose.Types.ObjectId(createdBy),
+      // createdBy: new mongoose.Types.ObjectId(createdBy),
+      createdBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),  // Use the logged-in user's ID
+
       images, audios, files,
       isRecurringInstance: false,
       recurrenceActive: repeat ? true : false
@@ -640,7 +622,6 @@ exports.createTask = async (req, res) => {
 // FIXED: getAllTasks - Now includes parents (no skip); pushes parent first, then instances for recurring
 exports.getAllTasks = async (req, res) => {
   try {
-    console.log('🔍 getAllTasks - Query params:', req.query);
 
     const companyStr = await getCompanyIdFromUser  (req.user);
     if (!companyStr) {
@@ -648,7 +629,6 @@ exports.getAllTasks = async (req, res) => {
     }
 
     const companyObjId = new mongoose.Types.ObjectId(companyStr);
-    console.log('🔍 Resolved company (string):', companyStr, ' (ObjectId):', companyObjId);
 
     // Base filters (unchanged)
     let filters = {
@@ -663,7 +643,6 @@ exports.getAllTasks = async (req, res) => {
     if (req.query.priority) filters.priority = req.query.priority;
     if (req.query.repeat !== undefined) filters.repeat = req.query.repeat === 'true';
 
-    console.log('🔍 Initial filters:', JSON.stringify(filters, null, 2));
 
     // Recurring filter logic (unchanged)
     const recurringFilter = req.query.recurring;
@@ -682,7 +661,6 @@ exports.getAllTasks = async (req, res) => {
       delete filters.isRecurringInstance;
     }
 
-    console.log('🔍 Final filters after recurring:', JSON.stringify(filters, null, 2));
 
     // FIXED: Aggregation pipeline - Removed invalid $addFields ($$parentTitle undefined); fetches instances cleanly
     const aggregation = await Task.aggregate([
@@ -724,7 +702,6 @@ exports.getAllTasks = async (req, res) => {
       { $sort: { createdAt: -1 } }
     ]);
 
-    console.log('🔍 Aggregation results length:', aggregation.length);
 
     // UPDATED: Build flat list - ALWAYS push parents (no skip); for recurring, additionally push instances + generate next
     const allTasks = [];
@@ -741,7 +718,6 @@ exports.getAllTasks = async (req, res) => {
         isRecurringInstance: false, 
         isOverdue: doc.isOverdue || (doc.endDateTime < new Date() && doc.status !== 'completed')  // Ensure overdue for parents
       });
-      console.log(`🔍 Including parent: ${doc.title} (ID: ${doc._id}), recurring: ${isRecurringParent}`);
 
       // For recurring parents: Additionally push instances + generate next (if active)
       if (isRecurringParent) {
@@ -759,8 +735,7 @@ exports.getAllTasks = async (req, res) => {
             });
           }
         });
-        console.log(`🔍 Added ${existingInstances.length} existing instances for parent ${doc._id}`);
-
+       
         // Generate/add next due instance if recurring and active (prioritizes today if matching)
         if (doc.nextFinishDateTime) {
           const holidays = await getHolidaysForPeriod(companyStr, doc.startDateTime, doc.nextFinishDateTime);
@@ -774,7 +749,6 @@ exports.getAllTasks = async (req, res) => {
               isOverdue: false,  // New instances are not overdue
               newlyGenerated: true  // Flag for frontend
             });
-            console.log(`✅ Added current due instance for parent ${doc._id}: ${currentInstance.startDateTime.toISOString()}`);
           }
         }
       } else {
@@ -795,7 +769,6 @@ exports.getAllTasks = async (req, res) => {
       return cleanTask;
     });
 
-    console.log(`📦 Returning ${cleanTasks.length} tasks (parents + instances for recurring, no duplicates), sample:`, cleanTasks[0]?.title);
 
     res.json({ tasks: cleanTasks });
   } catch (error) {
@@ -837,7 +810,6 @@ exports.getTaskById = async (req, res) => {
             newlyGenerated: true  // Optional flag
           });
           recurringInstances.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
-          console.log(`✅ Generated current due instance for task ${id}: ${currentInstance.startDateTime.toISOString()}`);
         }
       }
     }
@@ -1021,18 +993,7 @@ if (recurringStartDate && recurringEndDate && recurringEndDate <= recurringStart
     updatedTask.images = updatedTask.images || [];
     updatedTask.audios = updatedTask.audios || [];
     updatedTask.files = updatedTask.files || [];
- // Logging for debugging
-    console.log('🔄 Task updated successfully:', {
-      id: updatedTask._id,
-      title: updatedTask.title,
-      attachments: {
-        images: updatedTask.images.length,
-        audios: updatedTask.audios.length,
-        files: updatedTask.files.length,
-        removed: { images: removedImages.length, audios: removedAudios.length, files: removedFiles.length }
-      },
-      assignees: updatedTask.assignedTo.length
-    });
+
     res.status(200).json({
       success: true,
       message: 'Task updated successfully',
@@ -1161,7 +1122,6 @@ exports.shiftedTask = async (req, res) => {
       dateChangeDescription = validatedStartDateTime ? `, start changed to ${validatedStartDateTime.toISOString()}` : '';
       dateChangeDescription += validatedEndDateTime ? `, end changed to ${validatedEndDateTime.toISOString()}` : '';
 
-      console.log(`Date changes requested: Start=${validatedStartDateTime}, End=${validatedEndDateTime}`);
     }
 
     // Find the task (works for parent or instance)
@@ -1208,7 +1168,6 @@ exports.shiftedTask = async (req, res) => {
       }
     }
 
-    console.log(`Updating task ${taskId}: assignedTo=${newAssignedToArray}, dates changed? ${!!validatedStartDateTime || !!validatedEndDateTime}`);
 
     await task.save();
 
