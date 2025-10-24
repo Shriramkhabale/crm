@@ -76,7 +76,7 @@ exports.updateCompanyWithLogo = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-
+// added comments 
     if (req.file) {
       updateData.businessLogo = req.file.path;
     }
