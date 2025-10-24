@@ -72,28 +72,73 @@ exports.getCompanyById = async (req, res) => {
   }
 };
 
+// exports.updateCompanyWithLogo = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const updateData = req.body;
+
+//     if (req.file) {
+//       updateData.businessLogo = req.file.path;
+//     }
+
+//     const company = await Company.findOne({ _id: id, superadmin: req.user.id });
+//     if (!company) return res.status(404).json({ message: 'Company not found' });
+
+//     Object.assign(company, updateData);
+//     await company.save();
+
+//     res.json({ message: 'Company updated', company });
+//   } catch (error) {
+//     console.error('Update company error:', error);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
 exports.updateCompanyWithLogo = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid company ID' });
+    }
+
+    // Role-based authorization
+    let query = { _id: id };
+    if (req.user.role === 'superadmin') {
+      // Superadmin can update companies they own
+      query.superadmin = req.user.id;
+    } else if (req.user.role === 'company') {
+      // Company can only update their own record
+      if (req.user.id !== id) {
+        return res.status(403).json({ message: 'You can only update your own company information' });
+      }
+      // No additional query filter needed since _id is already checked
+    } else {
+      return res.status(403).json({ message: 'Unauthorized to update company information' });
+    }
+
+    const company = await Company.findOne(query);
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found or access denied' });
+    }
+
+    // Handle file upload if present
     if (req.file) {
       updateData.businessLogo = req.file.path;
     }
 
-    const company = await Company.findOne({ _id: id, superadmin: req.user.id });
-    if (!company) return res.status(404).json({ message: 'Company not found' });
-
+    // Update and save
     Object.assign(company, updateData);
     await company.save();
 
-    res.json({ message: 'Company updated', company });
+    res.json({ message: 'Company updated successfully', company });
   } catch (error) {
     console.error('Update company error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
 
 
 
