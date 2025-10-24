@@ -19,7 +19,7 @@ const storage = new CloudinaryStorage({
 
     return {
       folder,
-      allowed_formats: ['jpg', 'jpeg', 'png', 'mp3', 'wav', 'pdf', 'docx'],
+      allowed_formats: ['jpg', 'jpeg', 'png', 'mp3', 'wav', 'pdf', 'docx', 'txt'],
       resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
     };
   },
