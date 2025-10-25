@@ -390,27 +390,28 @@ exports.getCompanyPayrollHistory = async (req, res) => {
       .sort({ payrollMonth: -1, createdAt: -1 })  // Recent months first
       .limit(100);  // Reasonable limit
 
-    // NEW: For company-wide view, aggregate total pending advances across all employees
-    const allPendingAdvances = await SalaryAdvance.aggregate([
-      { $match: { company: mongoose.Types.ObjectId(companyId), deductedInPayroll: null } },
-      {
-        $group: {
-          _id: '$employee',
-          totalPending: { $sum: '$amount' },
-          count: { $sum: 1 }
-        }
-      },
-      { $lookup: {
-        from: 'employees',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'employee',
-        pipeline: [{ $project: { teamMemberName: 1, department: 1 } }]
-      } },
-      { $unwind: '$employee' },
-      { $sort: { totalPending: -1 } },
-      { $limit: 10 }  // Top 10 employees with pending advances
-    ]);
+// UPDATED: Fix ObjectId constructor in aggregation pipeline
+const allPendingAdvances = await SalaryAdvance.aggregate([
+  { $match: { company: new mongoose.Types.ObjectId(companyId), deductedInPayroll: null } },
+  {
+    $group: {
+      _id: '$employee',
+      totalPending: { $sum: '$amount' },
+      count: { $sum: 1 }
+    }
+  },
+  { $lookup: {
+    from: 'employees',
+    localField: '_id',
+    foreignField: '_id',
+    as: 'employee',
+    pipeline: [{ $project: { teamMemberName: 1, department: 1 } }]
+  } },
+  { $unwind: '$employee' },
+  { $sort: { totalPending: -1 } },
+  { $limit: 10 }  // Top 10 employees with pending advances
+]);
+
 
     // NEW: Enhance each payroll with employee-specific pending advances (optional, for detailed view)
     const enhancedPayrolls = await Promise.all(payrolls.map(async (payroll) => {
