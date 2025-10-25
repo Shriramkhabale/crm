@@ -38,17 +38,319 @@ const convertToArray = (objOrArray, category) => {
 };
 
 // Controller: Generate payroll slip for selected employee
+// exports.generatePayroll = async (req, res) => {
+//   console.log("req.body", req.body);
+//   console.log("req.user", req.user);
+  
+//   try {
+//     // const { employeeId, payrollMonth, deductions = [], incomes = [] } = req.body; // Expect arrays; fallback to empty
+
+//      const { 
+//       employeeId, 
+//       payrollMonth, 
+//       totalWorkingDays, 
+//       totalHalfDays, 
+//       totalLeaves, 
+//       totalWeeklyHolidays, 
+//       totalCompanyHolidays,
+//       deductions = [], 
+//       incomes = [] 
+//     } = req.body; 
+
+//     let companyId = req.user.companyId ||  req.user.id ;  // Default from auth middleware
+
+//     if (!employeeId || !companyId) {
+//       return res.status(400).json({ message: 'employeeId and companyId are required' });
+//     }
+
+//      // UPDATED: Use provided attendance values instead of recalculating
+//     const finalTotalWorkingDays = parseInt(totalWorkingDays) || 0;
+//     const finalTotalHalfDays = parseInt(totalHalfDays) || 0;
+//     const finalTotalLeaves = parseInt(totalLeaves) || 0;
+//     const finalTotalWeeklyHolidays = parseInt(totalWeeklyHolidays) || 0;
+//     const finalTotalCompanyHolidays = parseInt(totalCompanyHolidays) || 0;
+
+
+//     // UPDATED: Handle dynamic deductions/incomes (arrays or legacy objects)
+//     let deductionsArray = convertToArray(deductions, 'deductions');
+//     let incomesArray = convertToArray(incomes, 'incomes');
+
+//     // Validate arrays: Ensure each has type (string, non-empty) and amount (>=0 number)
+//     deductionsArray = deductionsArray.filter(ded => {
+//       if (typeof ded.type !== 'string' || ded.type.trim().length === 0) {
+//         console.warn(`Invalid deduction skipped: Missing type for ${JSON.stringify(ded)}`);
+//         return false;
+//       }
+//       if (typeof ded.amount !== 'number' || ded.amount < 0) {
+//         console.warn(`Invalid deduction skipped: Invalid amount ${ded.amount} for ${ded.type}`);
+//         return false;
+//       }
+//       return true;
+//     });
+
+//     incomesArray = incomesArray.filter(inc => {
+//       if (typeof inc.type !== 'string' || inc.type.trim().length === 0) {
+//         console.warn(`Invalid income skipped: Missing type for ${JSON.stringify(inc)}`);
+//         return false;
+//       }
+//       if (typeof inc.amount !== 'number' || inc.amount < 0) {
+//         console.warn(`Invalid income skipped: Invalid amount ${inc.amount} for ${inc.type}`);
+//         return false;
+//       }
+//       return true;
+//     });
+
+//     console.log(`Processed ${deductionsArray.length} deductions and ${incomesArray.length} incomes`);
+
+//     // NEW: Fetch undeducted advances for this employee and add to deductions
+//     const undeductedAdvances = await SalaryAdvance.find({
+//       company: companyId,
+//       employee: employeeId,
+//       deductedInPayroll: null  // Only undeducted ones
+//     }).select('amount notes');  // Minimal fields
+
+//     if (undeductedAdvances.length > 0) {
+//       console.log(`Found ${undeductedAdvances.length} undeducted advances for employee ${employeeId}`);
+//       // Add each advance to deductions array (as 'Salary Advance' type)
+//       const advanceDeductions = undeductedAdvances.map(adv => ({
+//         type: 'Salary Advance',  // Fixed type for easy filtering/display
+//         amount: adv.amount,
+//         notes: adv.notes  // Optional: Include notes if needed for display
+//       }));
+//       deductionsArray = [...deductionsArray, ...advanceDeductions];
+//       console.log('Advances added to deductions:', advanceDeductions);
+//     }
+
+//     // Default to current month if not provided
+//     const now = new Date();
+//     const defaultMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+//     const finalPayrollMonth = payrollMonth || defaultMonth;
+
+//     // Parse payrollMonth to get start/end dates
+//     const [year, month] = finalPayrollMonth.split('-').map(Number);
+//     const startDate = new Date(year, month - 1, 1);
+//     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+//     // Fetch employee (validate company)
+//     const employee = await Employee.findOne({ _id: employeeId, company: companyId });
+//     if (!employee) {
+//       return res.status(404).json({ message: 'Employee not found in your company' });
+//     }
+
+//     // Fetch attendance for the month
+//     const attendances = await Attendance.find({
+//       company: companyId,
+//       employee: employeeId,
+//       date: { $gte: startDate, $lte: endDate }
+//     });
+
+//     // Fetch company holidays for the month
+//     const companyHolidays = await Holiday.find({
+//       company: companyId,
+//       date: { $gte: startDate, $lte: endDate }
+//     });
+//     const holidayDates = companyHolidays.map(h => h.date.getDate());  // Just dates for exclusion
+
+//     // Calculate metrics from attendance (unchanged)
+//     // let totalWorkingDays = 0;
+//     // let totalHalfDays = 0;
+//     let paidLeaves = 0;
+//     let unpaidLeaves = 0;  // Implicit: Calculated but NOT stored
+
+//     // Map attendance by date for easy lookup
+//     const attendanceMap = new Map();
+//     attendances.forEach(att => {
+//       attendanceMap.set(att.date.getDate(), att.status);
+//     });
+
+//     // Loop through all days in month
+//     const daysInMonth = endDate.getDate();
+//     const weeklyHolidays = employee.weeklyHoliday || [];
+//     let weeklyHolidayCount = 0;
+//     let companyHolidayCount = holidayDates.length;
+
+//     for (let d = 1; d <= daysInMonth; d++) {
+//       const currentDate = new Date(year, month - 1, d);
+//       const dayName = getDayName(currentDate);
+//       const isWeeklyHoliday = weeklyHolidays.includes(dayName);
+//       const isCompanyHoliday = holidayDates.includes(d);
+
+//       if (isWeeklyHoliday) {
+//         weeklyHolidayCount++;
+//         continue;  // No work expected
+//       }
+//       if (isCompanyHoliday) {
+//         continue;  // No work expected
+//       }
+
+//       // Non-holiday day: Check attendance
+//       const status = attendanceMap.get(d);
+//       if (status === 'p') {
+//         totalWorkingDays++;
+//       } else if (status === 'h') {
+//         totalHalfDays++;
+//       } else if (status === 'l') {
+//         paidLeaves++;  // Paid leave: No deduction
+//       } else {
+//         // Absent, missing, or other: Implicit unpaid leave (deduct full day)
+//         unpaidLeaves++;
+//       }
+//     }
+
+//     // Base salary (parse if string)
+//     const baseSalary = parseFloat(employee.salary) || 0;
+//     const pfPercentage = parseFloat(employee.pfPercentage) || 0;  // Parse string to number
+//     const esicPercentage = parseFloat(employee.esicPercentage) || 0;  // Parse string to number
+
+
+//     // Calculate PF and ESIC amounts (only if percentage > 0)
+// if (pfPercentage > 0) {
+//   const pfAmount = (baseSalary * pfPercentage) / 100;
+//   if (pfAmount > 0) {
+//     deductionsArray.push({
+//       type: 'PF (Provident Fund)',
+//       amount: pfAmount
+//     });
+//     console.log(`Added automatic PF deduction: ${pfAmount} (based on ${pfPercentage}% of ${baseSalary})`);
+//   }
+// }
+// if (esicPercentage > 0) {
+//   const esicAmount = (baseSalary * esicPercentage) / 100;
+//   if (esicAmount > 0) {
+//     deductionsArray.push({
+//       type: 'ESIC (Employees\' State Insurance)',
+//       amount: esicAmount
+//     });
+//     console.log(`Added automatic ESIC deduction: ${esicAmount} (based on ${esicPercentage}% of ${baseSalary})`);
+//   }
+// }
+
+
+//     // UPDATED: Calculate totals from dynamic arrays (now includes advances)
+//     const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
+//     const totalIncomes = incomesArray.reduce((sum, inc) => sum + inc.amount, 0);
+
+//     // Total possible working days (exclude all holidays) - Calculated but NOT stored
+//     const totalHolidayCount = weeklyHolidayCount + companyHolidayCount;
+//     const totalPossibleWorkingDays = daysInMonth - totalHolidayCount;
+
+//     // Implicit unpaid leaves: Non-holiday days not accounted for as present/half/paid
+//     const expectedUnpaid = totalPossibleWorkingDays - (totalWorkingDays + totalHalfDays + paidLeaves);
+//     if (unpaidLeaves !== expectedUnpaid) {
+//       console.warn('Unpaid leaves mismatch; using calculated:', expectedUnpaid);
+//       unpaidLeaves = expectedUnpaid;
+//     }
+
+//     // Calculations (unchanged)
+//     const dailySalary = totalPossibleWorkingDays > 0 ? baseSalary / totalPossibleWorkingDays : 0;
+//     const leaveDeduction = dailySalary * unpaidLeaves;  // Full day for unpaid
+//     const halfDayDeduction = dailySalary * 0.5 * totalHalfDays;
+//     const totalLeaveHalfDeductions = leaveDeduction + halfDayDeduction;
+
+//     const totalDeductions = totalDeductionsManual + totalLeaveHalfDeductions;
+//     const netSalary = baseSalary - totalDeductions + totalIncomes;
+
+//     // NEW: Save payroll first (to get ID for advance updates)
+
+//     const payroll = new Payroll({
+//       company: companyId,
+//       employee: employeeId,
+//       salary: baseSalary,
+//       weeklyHoliday: weeklyHolidays,
+//       totalWorkingDays,
+//       totalHalfDays,
+//       paidLeaves,
+//       holidayCount: totalHolidayCount,
+//       deductions: deductionsArray,  // Includes user + advances
+//       incomes: incomesArray,
+//       totalDeductions,
+//       totalIncomes,
+//       netSalary,
+//       payrollMonth: finalPayrollMonth,
+//     });
+
+//     await payroll.save();
+
+//     // NEW: After saving, mark undeducted advances as deducted in this payroll
+//     if (undeductedAdvances.length > 0) {
+//       const updatePromises = undeductedAdvances.map(async (adv) => {
+//         await SalaryAdvance.findByIdAndUpdate(adv._id, { deductedInPayroll: payroll._id });
+//         console.log(`Marked advance ${adv._id} as deducted in payroll ${payroll._id}`);
+//       });
+//       await Promise.all(updatePromises);
+//       console.log(`All ${undeductedAdvances.length} advances marked as deducted`);
+//     }
+
+//     // Populate for full salary slip
+//     await payroll.populate('employee', 'firstName lastName salary department');
+
+//     const advanceDeductions = deductionsArray.filter(ded => ded.type === 'Salary Advance');
+//     const totalAdvancesDeducted = advanceDeductions.reduce((sum, ded) => sum + ded.amount, 0);
+
+//     // NEW: Extract PF/ESIC from deductions for summary (optional, for frontend breakdown)
+//     const pfDeduction = deductionsArray.find(ded => ded.type === 'PF (Provident Fund)') || { amount: 0 };
+//     const esicDeduction = deductionsArray.find(ded => ded.type === 'ESIC (Employees\' State Insurance)') || { amount: 0 };
+
+//     res.status(201).json({
+//       message: 'Salary slip generated successfully',
+//       payroll,  // Stored details (deductions includes PF/ESIC)
+//       summary: {  // Calculated values for frontend
+//         baseSalary,
+//         totalPossibleWorkingDays,
+//         dailySalary,
+//         workedDays: totalWorkingDays + (totalHalfDays * 0.5),
+//         paidLeaves,
+//         unpaidLeaves,
+//         holidayCount: totalHolidayCount,
+//         deductions: deductionsArray,  // Full list (includes PF/ESIC + advances)
+//         advancesDeducted: advanceDeductions,  // Advances only
+//         totalAdvancesDeducted,  // Sum of advances
+//         pfDeduction: pfDeduction.amount,  // NEW: PF amount
+//         esicDeduction: esicDeduction.amount,  // NEW: ESIC amount
+//         totalDeductionsManual,  // Sum of all manual (user + advances + PF/ESIC)
+//         totalLeaveHalfDeductions,
+//         totalDeductions,
+//         incomes: incomesArray,
+//         totalIncomes,
+//         netSalary
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Payroll generation error:', error);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
+
+// UPDATED: generatePayroll - Use provided attendance values instead of recalculating
 exports.generatePayroll = async (req, res) => {
   console.log("req.body", req.body);
   console.log("req.user", req.user);
   
   try {
-    const { employeeId, payrollMonth, deductions = [], incomes = [] } = req.body; // Expect arrays; fallback to empty
-    let companyId = req.user.companyId ||  req.user.id ;  // Default from auth middleware
-
+    const { 
+      employeeId, 
+      payrollMonth, 
+      totalWorkingDays, 
+      totalHalfDays, 
+      totalLeaves, 
+      totalWeeklyHolidays, 
+      totalCompanyHolidays,
+      deductions = [], 
+      incomes = [] 
+    } = req.body; // Use provided attendance values
+    let companyId = req.user.companyId || req.user.id;
+    
     if (!employeeId || !companyId) {
       return res.status(400).json({ message: 'employeeId and companyId are required' });
     }
+
+    // UPDATED: Use provided attendance values instead of recalculating
+    const finalTotalWorkingDays = parseInt(totalWorkingDays) || 0;
+    const finalTotalHalfDays = parseInt(totalHalfDays) || 0;
+    const finalTotalLeaves = parseInt(totalLeaves) || 0;
+    const finalTotalWeeklyHolidays = parseInt(totalWeeklyHolidays) || 0;
+    const finalTotalCompanyHolidays = parseInt(totalCompanyHolidays) || 0;
 
     // UPDATED: Handle dynamic deductions/incomes (arrays or legacy objects)
     let deductionsArray = convertToArray(deductions, 'deductions');
@@ -83,7 +385,7 @@ exports.generatePayroll = async (req, res) => {
 
     // NEW: Fetch undeducted advances for this employee and add to deductions
     const undeductedAdvances = await SalaryAdvance.find({
-      company: companyId,
+      company: new mongoose.Types.ObjectId(companyId), // Fixed ObjectId
       employee: employeeId,
       deductedInPayroll: null  // Only undeducted ones
     }).select('amount notes');  // Minimal fields
@@ -111,69 +413,9 @@ exports.generatePayroll = async (req, res) => {
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
     // Fetch employee (validate company)
-    const employee = await Employee.findOne({ _id: employeeId, company: companyId });
+    const employee = await Employee.findOne({ _id: employeeId, company: new mongoose.Types.ObjectId(companyId) }); // Fixed ObjectId
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found in your company' });
-    }
-
-    // Fetch attendance for the month
-    const attendances = await Attendance.find({
-      company: companyId,
-      employee: employeeId,
-      date: { $gte: startDate, $lte: endDate }
-    });
-
-    // Fetch company holidays for the month
-    const companyHolidays = await Holiday.find({
-      company: companyId,
-      date: { $gte: startDate, $lte: endDate }
-    });
-    const holidayDates = companyHolidays.map(h => h.date.getDate());  // Just dates for exclusion
-
-    // Calculate metrics from attendance (unchanged)
-    let totalWorkingDays = 0;
-    let totalHalfDays = 0;
-    let paidLeaves = 0;
-    let unpaidLeaves = 0;  // Implicit: Calculated but NOT stored
-
-    // Map attendance by date for easy lookup
-    const attendanceMap = new Map();
-    attendances.forEach(att => {
-      attendanceMap.set(att.date.getDate(), att.status);
-    });
-
-    // Loop through all days in month
-    const daysInMonth = endDate.getDate();
-    const weeklyHolidays = employee.weeklyHoliday || [];
-    let weeklyHolidayCount = 0;
-    let companyHolidayCount = holidayDates.length;
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const currentDate = new Date(year, month - 1, d);
-      const dayName = getDayName(currentDate);
-      const isWeeklyHoliday = weeklyHolidays.includes(dayName);
-      const isCompanyHoliday = holidayDates.includes(d);
-
-      if (isWeeklyHoliday) {
-        weeklyHolidayCount++;
-        continue;  // No work expected
-      }
-      if (isCompanyHoliday) {
-        continue;  // No work expected
-      }
-
-      // Non-holiday day: Check attendance
-      const status = attendanceMap.get(d);
-      if (status === 'p') {
-        totalWorkingDays++;
-      } else if (status === 'h') {
-        totalHalfDays++;
-      } else if (status === 'l') {
-        paidLeaves++;  // Paid leave: No deduction
-      } else {
-        // Absent, missing, or other: Implicit unpaid leave (deduct full day)
-        unpaidLeaves++;
-      }
     }
 
     // Base salary (parse if string)
@@ -181,49 +423,40 @@ exports.generatePayroll = async (req, res) => {
     const pfPercentage = parseFloat(employee.pfPercentage) || 0;  // Parse string to number
     const esicPercentage = parseFloat(employee.esicPercentage) || 0;  // Parse string to number
 
-
     // Calculate PF and ESIC amounts (only if percentage > 0)
-if (pfPercentage > 0) {
-  const pfAmount = (baseSalary * pfPercentage) / 100;
-  if (pfAmount > 0) {
-    deductionsArray.push({
-      type: 'PF (Provident Fund)',
-      amount: pfAmount
-    });
-    console.log(`Added automatic PF deduction: ${pfAmount} (based on ${pfPercentage}% of ${baseSalary})`);
-  }
-}
-if (esicPercentage > 0) {
-  const esicAmount = (baseSalary * esicPercentage) / 100;
-  if (esicAmount > 0) {
-    deductionsArray.push({
-      type: 'ESIC (Employees\' State Insurance)',
-      amount: esicAmount
-    });
-    console.log(`Added automatic ESIC deduction: ${esicAmount} (based on ${esicPercentage}% of ${baseSalary})`);
-  }
-}
-
+    if (pfPercentage > 0) {
+      const pfAmount = (baseSalary * pfPercentage) / 100;
+      if (pfAmount > 0) {
+        deductionsArray.push({
+          type: 'PF (Provident Fund)',
+          amount: pfAmount
+        });
+        console.log(`Added automatic PF deduction: ${pfAmount} (based on ${pfPercentage}% of ${baseSalary})`);
+      }
+    }
+    if (esicPercentage > 0) {
+      const esicAmount = (baseSalary * esicPercentage) / 100;
+      if (esicAmount > 0) {
+        deductionsArray.push({
+          type: 'ESIC (Employees\' State Insurance)',
+          amount: esicAmount
+        });
+        console.log(`Added automatic ESIC deduction: ${esicAmount} (based on ${esicPercentage}% of ${baseSalary})`);
+      }
+    }
 
     // UPDATED: Calculate totals from dynamic arrays (now includes advances)
     const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
     const totalIncomes = incomesArray.reduce((sum, inc) => sum + inc.amount, 0);
 
-    // Total possible working days (exclude all holidays) - Calculated but NOT stored
-    const totalHolidayCount = weeklyHolidayCount + companyHolidayCount;
-    const totalPossibleWorkingDays = daysInMonth - totalHolidayCount;
-
-    // Implicit unpaid leaves: Non-holiday days not accounted for as present/half/paid
-    const expectedUnpaid = totalPossibleWorkingDays - (totalWorkingDays + totalHalfDays + paidLeaves);
-    if (unpaidLeaves !== expectedUnpaid) {
-      console.warn('Unpaid leaves mismatch; using calculated:', expectedUnpaid);
-      unpaidLeaves = expectedUnpaid;
-    }
+    // UPDATED: Use provided attendance values for calculations
+    const totalHolidayCount = finalTotalWeeklyHolidays + finalTotalCompanyHolidays;
+    const totalPossibleWorkingDays = new Date(year, month, 0).getDate() - totalHolidayCount;
 
     // Calculations (unchanged)
     const dailySalary = totalPossibleWorkingDays > 0 ? baseSalary / totalPossibleWorkingDays : 0;
-    const leaveDeduction = dailySalary * unpaidLeaves;  // Full day for unpaid
-    const halfDayDeduction = dailySalary * 0.5 * totalHalfDays;
+    const leaveDeduction = dailySalary * finalTotalLeaves;  // Full day for unpaid
+    const halfDayDeduction = dailySalary * 0.5 * finalTotalHalfDays;
     const totalLeaveHalfDeductions = leaveDeduction + halfDayDeduction;
 
     const totalDeductions = totalDeductionsManual + totalLeaveHalfDeductions;
@@ -231,13 +464,13 @@ if (esicPercentage > 0) {
 
     // NEW: Save payroll first (to get ID for advance updates)
     const payroll = new Payroll({
-      company: companyId,
+      company: new mongoose.Types.ObjectId(companyId), // Fixed ObjectId
       employee: employeeId,
       salary: baseSalary,
-      weeklyHoliday: weeklyHolidays,
-      totalWorkingDays,
-      totalHalfDays,
-      paidLeaves,
+      weeklyHoliday: employee.weeklyHoliday || [],
+      totalWorkingDays: finalTotalWorkingDays, // Use provided value
+      totalHalfDays: finalTotalHalfDays, // Use provided value
+      paidLeaves: finalTotalLeaves, // Use provided value
       holidayCount: totalHolidayCount,
       deductions: deductionsArray,  // Includes user + advances
       incomes: incomesArray,
@@ -276,9 +509,9 @@ if (esicPercentage > 0) {
         baseSalary,
         totalPossibleWorkingDays,
         dailySalary,
-        workedDays: totalWorkingDays + (totalHalfDays * 0.5),
-        paidLeaves,
-        unpaidLeaves,
+        workedDays: finalTotalWorkingDays + (finalTotalHalfDays * 0.5),
+        paidLeaves: finalTotalLeaves,
+        unpaidLeaves: finalTotalLeaves, // Assuming provided leaves are unpaid
         holidayCount: totalHolidayCount,
         deductions: deductionsArray,  // Full list (includes PF/ESIC + advances)
         advancesDeducted: advanceDeductions,  // Advances only
