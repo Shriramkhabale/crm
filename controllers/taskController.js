@@ -573,11 +573,9 @@ exports.createTask = async (req, res) => {
       try {
         assignedToArray = JSON.parse(req.body.assignedTo);
       } catch (e) {
-        return res
-          .status(400)
-          .json({
-            message: "Invalid assignedTo format - must be JSON array of IDs",
-          });
+        return res.status(400).json({
+          message: "Invalid assignedTo format - must be JSON array of IDs",
+        });
       }
     }
 
@@ -586,11 +584,9 @@ exports.createTask = async (req, res) => {
       try {
         repeatDaysOfWeek = JSON.parse(req.body.repeatDaysOfWeek);
       } catch (e) {
-        return res
-          .status(400)
-          .json({
-            message: "Invalid repeatDaysOfWeek format - must be JSON array",
-          });
+        return res.status(400).json({
+          message: "Invalid repeatDaysOfWeek format - must be JSON array",
+        });
       }
     }
 
@@ -599,12 +595,10 @@ exports.createTask = async (req, res) => {
       try {
         repeatDatesOfMonth = JSON.parse(req.body.repeatDatesOfMonth);
       } catch (e) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Invalid repeatDatesOfMonth format - must be JSON array of numbers",
-          });
+        return res.status(400).json({
+          message:
+            "Invalid repeatDatesOfMonth format - must be JSON array of numbers",
+        });
       }
     }
 
@@ -635,12 +629,10 @@ exports.createTask = async (req, res) => {
       !startDateTime ||
       !endDateTime
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Title, department, assignedTo, startDateTime, and endDateTime are required",
-        });
+      return res.status(400).json({
+        message:
+          "Title, department, assignedTo, startDateTime, and endDateTime are required",
+      });
     }
 
     // Validate assignees exist in company
@@ -649,11 +641,9 @@ exports.createTask = async (req, res) => {
       company: company.toString(),
     });
     if (assignee.length !== assignedToArray.length) {
-      return res
-        .status(400)
-        .json({
-          message: "One or more assigned users not found in your company",
-        });
+      return res.status(400).json({
+        message: "One or more assigned users not found in your company",
+      });
     }
 
     // Parse dates
@@ -683,12 +673,9 @@ exports.createTask = async (req, res) => {
     }
 
     if (actualNextFinishDateTime <= actualStartDateTime) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "endDateTime must be after startDateTime for recurring tasks",
-        });
+      return res.status(400).json({
+        message: "endDateTime must be after startDateTime for recurring tasks",
+      });
     }
 
     // Repeat validation (unchanged, but use parsed arrays)
@@ -697,21 +684,17 @@ exports.createTask = async (req, res) => {
         !repeatFrequency ||
         !["daily", "weekly", "monthly"].includes(repeatFrequency)
       ) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "repeatFrequency must be one of daily, weekly, or monthly when repeat is true",
-          });
+        return res.status(400).json({
+          message:
+            "repeatFrequency must be one of daily, weekly, or monthly when repeat is true",
+        });
       }
       if (repeatFrequency === "weekly") {
         if (!Array.isArray(repeatDaysOfWeek) || repeatDaysOfWeek.length === 0) {
-          return res
-            .status(400)
-            .json({
-              message:
-                "repeatDaysOfWeek must be a non-empty array when repeatFrequency is weekly",
-            });
+          return res.status(400).json({
+            message:
+              "repeatDaysOfWeek must be a non-empty array when repeatFrequency is weekly",
+          });
         }
         repeatDaysOfWeek.forEach((day) => {
           if (!validWeekDays.includes(day)) {
@@ -726,12 +709,10 @@ exports.createTask = async (req, res) => {
           !Array.isArray(repeatDatesOfMonth) ||
           repeatDatesOfMonth.length === 0
         ) {
-          return res
-            .status(400)
-            .json({
-              message:
-                "repeatDatesOfMonth must be a non-empty array when repeatFrequency is monthly",
-            });
+          return res.status(400).json({
+            message:
+              "repeatDatesOfMonth must be a non-empty array when repeatFrequency is monthly",
+          });
         }
         repeatDatesOfMonth.forEach((date) => {
           if (typeof date !== "number" || date < 1 || date > 31) {
@@ -743,11 +724,9 @@ exports.createTask = async (req, res) => {
       }
     } else {
       if (!nextFollowUpDateTime) {
-        return res
-          .status(400)
-          .json({
-            message: "nextFollowUpDateTime is required when repeat is false",
-          });
+        return res.status(400).json({
+          message: "nextFollowUpDateTime is required when repeat is false",
+        });
       }
     }
 
@@ -918,6 +897,153 @@ exports.getAllTasks = async (req, res) => {
 
     // FIXED: Aggregation pipeline - Removed invalid $addFields ($$parentTitle undefined); fetches instances cleanly
 
+    // const aggregation = await Task.aggregate([
+    //   { $match: filters },
+    //   {
+    //     $lookup: {
+    //       from: "tasks",
+    //       let: { parentId: "$_id" },
+    //       pipeline: [
+    //         {
+    //           $match: {
+    //             $expr: { $eq: ["$parentTask", "$$parentId"] },
+    //             company: companyObjId, // Ensure company match
+    //           },
+    //         },
+    //         // FIXED: No date filter - fetches ALL instances (past + future)
+    //         {
+    //           $lookup: {
+    //             from: "employees",
+    //             localField: "assignedTo",
+    //             foreignField: "_id",
+    //             as: "assignedTo",
+    //           },
+    //         },
+    //         // UPDATED: Conditional lookups for createdBy (employee or company)
+    //         {
+    //           $lookup: {
+    //             from: "employees",
+    //             localField: "createdBy",
+    //             foreignField: "_id",
+    //             as: "createdByEmployee",
+    //           },
+    //         },
+    //         {
+    //           $lookup: {
+    //             from: "companies",
+    //             localField: "createdBy",
+    //             foreignField: "_id",
+    //             as: "createdByCompany",
+    //           },
+    //         },
+    //         {
+    //           $addFields: {
+    //             createdBy: {
+    //               $cond: {
+    //                 if: { $gt: [{ $size: "$createdByEmployee" }, 0] }, // If found in employees
+    //                 then: {
+    //                   $mergeObjects: [
+    //                     { $arrayElemAt: ["$createdByEmployee", 0] },
+    //                     { role: "employee" }, // Explicitly set role
+    //                   ],
+    //                 },
+    //                 else: {
+    //                   $cond: {
+    //                     if: { $gt: [{ $size: "$createdByCompany" }, 0] }, // Else if found in companies
+    //                     then: {
+    //                       $mergeObjects: [
+    //                         { $arrayElemAt: ["$createdByCompany", 0] },
+    //                         { role: "company" }, // Explicitly set role
+    //                       ],
+    //                     },
+    //                     else: null, // Fallback to null (frontend shows "Unknown")
+    //                   },
+    //                 },
+    //               },
+    //             },
+    //           },
+    //         },
+    //         // Clean up temporary fields
+    //         {
+    //           $project: {
+    //             createdByEmployee: 0,
+    //             createdByCompany: 0,
+    //           },
+    //         },
+    //       ],
+    //       as: "recurringInstances",
+    //     },
+    //   },
+    //   // UPDATED: Conditional lookups for createdBy in main pipeline (for parents/non-recurring)
+    //   {
+    //     $lookup: {
+    //       from: "employees",
+    //       localField: "createdBy",
+    //       foreignField: "_id",
+    //       as: "createdByEmployee",
+    //     },
+    //   },
+    //   {
+    //     $lookup: {
+    //       from: "companies",
+    //       localField: "createdBy",
+    //       foreignField: "_id",
+    //       as: "createdByCompany",
+    //     },
+    //   },
+    //   {
+    //     $addFields: {
+    //       createdBy: {
+    //         $cond: {
+    //           if: { $gt: [{ $size: "$createdByEmployee" }, 0] },
+    //           then: {
+    //             $mergeObjects: [
+    //               { $arrayElemAt: ["$createdByEmployee", 0] },
+    //               { role: "employee" },
+    //             ],
+    //           },
+    //           else: {
+    //             $cond: {
+    //               if: { $gt: [{ $size: "$createdByCompany" }, 0] },
+    //               then: {
+    //                 $mergeObjects: [
+    //                   { $arrayElemAt: ["$createdByCompany", 0] },
+    //                   { role: "company" },
+    //                 ],
+    //               },
+    //               else: null,
+    //             },
+    //           },
+    //         },
+    //       },
+    //     },
+    //   },
+    //   // Clean up temporary fields
+    //   {
+    //     $project: {
+    //       createdByEmployee: 0,
+    //       createdByCompany: 0,
+    //     },
+    //   },
+    //   // Compute overdue (unchanged)
+    //   {
+    //     $addFields: {
+    //       isOverdue: {
+    //         $and: [
+    //           { $lt: ["$endDateTime", new Date()] },
+    //           { $ne: ["$status", "completed"] },
+    //           {
+    //             $or: [
+    //               { $eq: ["$repeatFrequency", "daily"] },
+    //               { $eq: ["$repeat", false] },
+    //             ],
+    //           },
+    //         ],
+    //       },
+    //     },
+    //   },
+    //   { $sort: { createdAt: -1 } },
+    // ]);
     const aggregation = await Task.aggregate([
       { $match: filters },
       {
@@ -940,110 +1066,17 @@ exports.getAllTasks = async (req, res) => {
                 as: "assignedTo",
               },
             },
-            // UPDATED: Conditional lookups for createdBy (employee or company)
             {
               $lookup: {
                 from: "employees",
                 localField: "createdBy",
                 foreignField: "_id",
-                as: "createdByEmployee",
+                as: "createdBy",
               },
             },
-            {
-              $lookup: {
-                from: "companies",
-                localField: "createdBy",
-                foreignField: "_id",
-                as: "createdByCompany",
-              },
-            },
-            {
-              $addFields: {
-                createdBy: {
-                  $cond: {
-                    if: { $gt: [{ $size: "$createdByEmployee" }, 0] }, // If found in employees
-                    then: {
-                      $mergeObjects: [
-                        { $arrayElemAt: ["$createdByEmployee", 0] },
-                        { role: "employee" }, // Explicitly set role
-                      ],
-                    },
-                    else: {
-                      $cond: {
-                        if: { $gt: [{ $size: "$createdByCompany" }, 0] }, // Else if found in companies
-                        then: {
-                          $mergeObjects: [
-                            { $arrayElemAt: ["$createdByCompany", 0] },
-                            { role: "company" }, // Explicitly set role
-                          ],
-                        },
-                        else: null, // Fallback to null (frontend shows "Unknown")
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            // Clean up temporary fields
-            {
-              $project: {
-                createdByEmployee: 0,
-                createdByCompany: 0,
-              },
-            },
+            // REMOVED: $addFields { parentTitle: '$$parentTitle' } - Not needed; add in JS loop
           ],
           as: "recurringInstances",
-        },
-      },
-      // UPDATED: Conditional lookups for createdBy in main pipeline (for parents/non-recurring)
-      {
-        $lookup: {
-          from: "employees",
-          localField: "createdBy",
-          foreignField: "_id",
-          as: "createdByEmployee",
-        },
-      },
-      {
-        $lookup: {
-          from: "companies",
-          localField: "createdBy",
-          foreignField: "_id",
-          as: "createdByCompany",
-        },
-      },
-      {
-        $addFields: {
-          createdBy: {
-            $cond: {
-              if: { $gt: [{ $size: "$createdByEmployee" }, 0] },
-              then: {
-                $mergeObjects: [
-                  { $arrayElemAt: ["$createdByEmployee", 0] },
-                  { role: "employee" },
-                ],
-              },
-              else: {
-                $cond: {
-                  if: { $gt: [{ $size: "$createdByCompany" }, 0] },
-                  then: {
-                    $mergeObjects: [
-                      { $arrayElemAt: ["$createdByCompany", 0] },
-                      { role: "company" },
-                    ],
-                  },
-                  else: null,
-                },
-              },
-            },
-          },
-        },
-      },
-      // Clean up temporary fields
-      {
-        $project: {
-          createdByEmployee: 0,
-          createdByCompany: 0,
         },
       },
       // Compute overdue (unchanged)
@@ -1065,6 +1098,7 @@ exports.getAllTasks = async (req, res) => {
       },
       { $sort: { createdAt: -1 } },
     ]);
+
     // UPDATED: Build flat list - ALWAYS push parents (no skip); for recurring, additionally push instances + generate next
     const allTasks = [];
     const today = new Date();
@@ -1325,12 +1359,10 @@ exports.updateTask = async (req, res) => {
         recurringEndDate &&
         recurringEndDate <= recurringStartDate
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Recurring end date must be after start date",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Recurring end date must be after start date",
+        });
       }
     }
     // Company and createdBy (preserve or set if needed)
@@ -1485,11 +1517,9 @@ exports.deleteTask = async (req, res) => {
         isRecurringInstance: { $ne: true },
       });
       if (!parentTask) {
-        return res
-          .status(404)
-          .json({
-            message: "Recurring parent task not found for series deletion",
-          });
+        return res.status(404).json({
+          message: "Recurring parent task not found for series deletion",
+        });
       }
       // Delete all children (past + future instances)
       const deletedInstances = await Task.deleteMany({ parentTask: id });
@@ -1618,12 +1648,10 @@ exports.shiftedTask = async (req, res) => {
         task.repeatDatesOfMonth &&
         !task.repeatDatesOfMonth.includes(newStartDay)
       ) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Cannot change start date on recurring parent - it would break the monthly pattern. Update instances instead.",
-          });
+        return res.status(400).json({
+          message:
+            "Cannot change start date on recurring parent - it would break the monthly pattern. Update instances instead.",
+        });
       }
       // Similar checks for weekly/daily can be added if needed
     }
