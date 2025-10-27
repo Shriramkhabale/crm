@@ -17,8 +17,13 @@ exports.createCompanyWithLogo = async (req, res) => {
       franchise
     } = req.body;
 
-    if (typeof weeklyHoliday === 'string') {
-      weeklyHoliday = [weeklyHoliday];
+ // UPDATED: Parse weeklyHoliday from JSON string to array
+    let weeklyHolidayArr;
+    try {
+      weeklyHolidayArr = weeklyHoliday ? JSON.parse(weeklyHoliday) : ['Sunday']; // Default if empty
+    } catch (error) {
+      console.error('Error parsing weeklyHoliday:', error);
+      weeklyHolidayArr = ['Sunday']; // Fallback
     }
 
     const existing = await Company.findOne({ businessEmail });
@@ -36,7 +41,7 @@ exports.createCompanyWithLogo = async (req, res) => {
       password,
       businessCreatedDate,
       businessSubscriptionPlan,
-      weeklyHoliday,
+      weeklyHoliday: weeklyHolidayArr,
       address,
       businessLogo
     });
@@ -107,6 +112,19 @@ exports.updateCompanyWithLogo = async (req, res) => {
       updateData.businessLogo = req.file.path;
     }
 
+
+       // UPDATED: Parse weeklyHoliday if present
+    if (updateData.weeklyHoliday) {
+      try {
+        updateData.weeklyHoliday = JSON.parse(updateData.weeklyHoliday);
+      } catch (error) {
+        console.error('Error parsing weeklyHoliday in update:', error);
+        updateData.weeklyHoliday = ['Sunday']; // Fallback or keep existing
+      }
+    }
+
+
+
     // Update and save
     Object.assign(company, updateData);
     await company.save();
@@ -117,9 +135,6 @@ exports.updateCompanyWithLogo = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
-
-
 
 
 // Delete Company
@@ -164,6 +179,7 @@ exports.createBranchWithLogo = async (req, res) => {
     if (!parentCompany) {
       return res.status(404).json({ message: 'Parent company not found' });
     }
+
     if (parentCompany.isBranch) {
       return res.status(400).json({ message: 'Cannot add branch to a branch' });
     }
@@ -171,6 +187,15 @@ exports.createBranchWithLogo = async (req, res) => {
     const existingBranch = await Company.findOne({ businessEmail });
     if (existingBranch) {
       return res.status(400).json({ message: 'Branch email already exists' });
+    }
+
+     // UPDATED: Parse weeklyHoliday from JSON string to array
+    let weeklyHolidayArr;
+    try {
+      weeklyHolidayArr = weeklyHoliday ? JSON.parse(weeklyHoliday) : ['Sunday'];
+    } catch (error) {
+      console.error('Error parsing weeklyHoliday in branch:', error);
+      weeklyHolidayArr = ['Sunday'];
     }
 
     const businessLogo = req.file ? req.file.path : undefined;
@@ -183,7 +208,7 @@ exports.createBranchWithLogo = async (req, res) => {
       password,
       businessCreatedDate,
       businessSubscriptionPlan,
-      weeklyHoliday,
+      weeklyHoliday: weeklyHolidayArr,
       address,
       businessLogo,
       franchise,
@@ -232,7 +257,15 @@ exports.updateBranchWithLogo = async (req, res) => {
     if (req.file) {
       updateData.businessLogo = req.file.path;
     }
-
+ // UPDATED: Parse weeklyHoliday if present
+    if (updateData.weeklyHoliday) {
+      try {
+        updateData.weeklyHoliday = JSON.parse(updateData.weeklyHoliday);
+      } catch (error) {
+        console.error('Error parsing weeklyHoliday in branch update:', error);
+        updateData.weeklyHoliday = ['Sunday']; // Fallback
+      }
+    }
     Object.assign(branch, updateData);
     await branch.save();
 
