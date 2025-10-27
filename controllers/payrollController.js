@@ -618,11 +618,17 @@ exports.getCompanyPayrollHistory = async (req, res) => {
       filters.payrollMonth = `${year}-${monthStr}`;
     }
 
-    // UPDATED: Populate with fields the frontend expects (teamMemberName, name, employeeId, department)
-    // If department is a reference array, populate it deeply; if embedded, just select it
+    // UPDATED: Use nested populate for employee and its department array
+    // This ensures department (array of ObjectIds) gets populated with departmentName and name
     const payrolls = await Payroll.find(filters)
-      .populate('employee', 'teamMemberName name employeeId department')  // ✅ ADDED teamMemberName, name, employeeId; kept department
-      .populate('employee.department', 'departmentName name')  // ✅ If department is a reference array, populate sub-fields
+      .populate({
+        path: 'employee',
+        select: 'teamMemberName name employeeId',  // Select employee fields (exclude department here)
+        populate: {
+          path: 'department',  // Populate the department array within employee
+          select: 'departmentName name'  // Select department fields
+        }
+      })
       .sort({ payrollMonth: -1, createdAt: -1 })  // Recent months first
       .limit(100);  // Reasonable limit
 
@@ -681,4 +687,3 @@ exports.getCompanyPayrollHistory = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
