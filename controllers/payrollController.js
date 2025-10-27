@@ -322,7 +322,7 @@ const convertToArray = (objOrArray, category) => {
 // };
 
 
-// UPDATED: generatePayroll - Use provided attendance values instead of recalculating
+// UPDATED: generatePayroll - Use proportional grossSalary and exclude leave deductions from totalDeductions
 exports.generatePayroll = async (req, res) => {
   console.log("req.body", req.body);
   console.log("req.user", req.user);
@@ -407,10 +407,9 @@ exports.generatePayroll = async (req, res) => {
     const defaultMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
     const finalPayrollMonth = payrollMonth || defaultMonth;
 
-    // Parse payrollMonth to get start/end dates
+    // Parse payrollMonth to get total days in month
     const [year, month] = finalPayrollMonth.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    const totalMonthDays = new Date(year, month, 0).getDate();
 
     // Fetch employee (validate company)
     const employee = await Employee.findOne({ _id: employeeId, company: new mongoose.Types.ObjectId(companyId) }); // Fixed ObjectId
@@ -423,9 +422,18 @@ exports.generatePayroll = async (req, res) => {
     const pfPercentage = parseFloat(employee.pfPercentage) || 0;  // Parse string to number
     const esicPercentage = parseFloat(employee.esicPercentage) || 0;  // Parse string to number
 
-    // Calculate PF and ESIC amounts (only if percentage > 0)
+    // Calculate per-day rate and proportional grossSalary (like frontend)
+    const perDayRate = baseSalary / totalMonthDays;
+    const effectiveWorkingDays = finalTotalWorkingDays + (finalTotalHalfDays * 0.5);
+    const paidHolidayDays = finalTotalWeeklyHolidays + finalTotalCompanyHolidays;
+    const totalPaidDays = effectiveWorkingDays + paidHolidayDays;
+    const grossSalary = totalPaidDays * perDayRate;
+
+    // Calculate PF and ESIC amounts on base salary (as requested)
+    let pfAmount = 0;
+    let esicAmount = 0;
     if (pfPercentage > 0) {
-      const pfAmount = (baseSalary * pfPercentage) / 100;
+      pfAmount = (baseSalary * pfPercentage) / 100;
       if (pfAmount > 0) {
         deductionsArray.push({
           type: 'PF (Provident Fund)',
@@ -435,7 +443,7 @@ exports.generatePayroll = async (req, res) => {
       }
     }
     if (esicPercentage > 0) {
-      const esicAmount = (baseSalary * esicPercentage) / 100;
+      esicAmount = (baseSalary * esicPercentage) / 100;
       if (esicAmount > 0) {
         deductionsArray.push({
           type: 'ESIC (Employees\' State Insurance)',
@@ -445,24 +453,14 @@ exports.generatePayroll = async (req, res) => {
       }
     }
 
-    // UPDATED: Calculate totals from dynamic arrays (now includes advances)
+    // UPDATED: Calculate totals (exclude leave deductions since grossSalary accounts for attendance)
     const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
     const totalIncomes = incomesArray.reduce((sum, inc) => sum + inc.amount, 0);
 
-    // UPDATED: Use provided attendance values for calculations
-    const totalHolidayCount = finalTotalWeeklyHolidays + finalTotalCompanyHolidays;
-    const totalPossibleWorkingDays = new Date(year, month, 0).getDate() - totalHolidayCount;
+    // UPDATED: netSalary = grossSalary + totalIncomes - totalDeductionsManual (matches frontend)
+    const netSalary = grossSalary + totalIncomes - totalDeductionsManual;
 
-    // Calculations (unchanged)
-    const dailySalary = totalPossibleWorkingDays > 0 ? baseSalary / totalPossibleWorkingDays : 0;
-    const leaveDeduction = dailySalary * finalTotalLeaves;  // Full day for unpaid
-    const halfDayDeduction = dailySalary * 0.5 * finalTotalHalfDays;
-    const totalLeaveHalfDeductions = leaveDeduction + halfDayDeduction;
-
-    const totalDeductions = totalDeductionsManual + totalLeaveHalfDeductions;
-    const netSalary = baseSalary - totalDeductions + totalIncomes;
-
-    // NEW: Save payroll first (to get ID for advance updates)
+    // NEW: Save payroll (totalDeductions now excludes leave deductions)
     const payroll = new Payroll({
       company: new mongoose.Types.ObjectId(companyId), // Fixed ObjectId
       employee: employeeId,
@@ -471,10 +469,10 @@ exports.generatePayroll = async (req, res) => {
       totalWorkingDays: finalTotalWorkingDays, // Use provided value
       totalHalfDays: finalTotalHalfDays, // Use provided value
       paidLeaves: finalTotalLeaves, // Use provided value
-      holidayCount: totalHolidayCount,
-      deductions: deductionsArray,  // Includes user + advances
+      holidayCount: paidHolidayDays,
+      deductions: deductionsArray,  // Includes user + advances + PF + ESIC
       incomes: incomesArray,
-      totalDeductions,
+      totalDeductions: totalDeductionsManual, // UPDATED: Only manual deductions (no leave deductions)
       totalIncomes,
       netSalary,
       payrollMonth: finalPayrollMonth,
@@ -498,29 +496,22 @@ exports.generatePayroll = async (req, res) => {
     const advanceDeductions = deductionsArray.filter(ded => ded.type === 'Salary Advance');
     const totalAdvancesDeducted = advanceDeductions.reduce((sum, ded) => sum + ded.amount, 0);
 
-    // NEW: Extract PF/ESIC from deductions for summary (optional, for frontend breakdown)
-    const pfDeduction = deductionsArray.find(ded => ded.type === 'PF (Provident Fund)') || { amount: 0 };
-    const esicDeduction = deductionsArray.find(ded => ded.type === 'ESIC (Employees\' State Insurance)') || { amount: 0 };
-
     res.status(201).json({
       message: 'Salary slip generated successfully',
-      payroll,  // Stored details (deductions includes PF/ESIC)
+      payroll,  // Stored details
       summary: {  // Calculated values for frontend
         baseSalary,
-        totalPossibleWorkingDays,
-        dailySalary,
-        workedDays: finalTotalWorkingDays + (finalTotalHalfDays * 0.5),
-        paidLeaves: finalTotalLeaves,
-        unpaidLeaves: finalTotalLeaves, // Assuming provided leaves are unpaid
-        holidayCount: totalHolidayCount,
+        grossSalary,
+        perDayRate,
+        effectiveWorkingDays,
+        paidHolidayDays,
+        totalPaidDays,
         deductions: deductionsArray,  // Full list (includes PF/ESIC + advances)
         advancesDeducted: advanceDeductions,  // Advances only
         totalAdvancesDeducted,  // Sum of advances
-        pfDeduction: pfDeduction.amount,  // NEW: PF amount
-        esicDeduction: esicDeduction.amount,  // NEW: ESIC amount
+        pfAmount,  // PF amount
+        esicAmount,  // ESIC amount
         totalDeductionsManual,  // Sum of all manual (user + advances + PF/ESIC)
-        totalLeaveHalfDeductions,
-        totalDeductions,
         incomes: incomesArray,
         totalIncomes,
         netSalary
@@ -531,6 +522,7 @@ exports.generatePayroll = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 
 // Controller: Get salary slip by employee, year, month (company-scoped) - UPDATED with pending advances
