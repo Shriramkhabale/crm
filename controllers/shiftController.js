@@ -4,13 +4,16 @@ const Shift = require('../models/Shifts');
 // Create a new shift
 exports.createShift = async (req, res) => {
   try {
-    const { name, startTime, endTime, description, isActive } = req.body;
+    const { name, startTime, endTime } = req.body;
 
     if (!name || !startTime || !endTime) {
       return res.status(400).json({ message: 'Name, startTime and endTime are required' });
     }
-
-    const shift = new Shift({ name, startTime, endTime, description, isActive });
+    
+    console.log("req.user",req.user);
+    
+    const shift = new Shift({ name, startTime, endTime, company: req.user.companyId || req.user.id 
+});
     await shift.save();
 
     res.status(201).json({ message: 'Shift created successfully', shift });
@@ -23,7 +26,8 @@ exports.createShift = async (req, res) => {
 // Get all shifts
 exports.getAllShifts = async (req, res) => {
   try {
-    const shifts = await Shift.find().sort({ createdAt: -1 });
+    // UPDATED: Filter shifts by the user's company only
+    const shifts = await Shift.find({ company: req.user.companyId || req.user.id }).sort({ createdAt: -1 });
     res.json(shifts);
   } catch (error) {
     console.error('Get shifts error:', error);
@@ -47,16 +51,20 @@ exports.getShiftById = async (req, res) => {
 };
 
 // Update a shift by ID
+
 exports.updateShift = async (req, res) => {
   try {
     const { shiftId } = req.params;
     const updates = req.body;
-
-    const shift = await Shift.findByIdAndUpdate(shiftId, updates, { new: true, runValidators: true });
+    // UPDATED: Ensure the shift belongs to the user's company
+    const shift = await Shift.findOneAndUpdate(
+      { _id: shiftId, company: req.user.companyId || req.user.id }, 
+      updates, 
+      { new: true, runValidators: true }
+    );
     if (!shift) {
-      return res.status(404).json({ message: 'Shift not found' });
+      return res.status(404).json({ message: 'Shift not found or access denied' });
     }
-
     res.json({ message: 'Shift updated successfully', shift });
   } catch (error) {
     console.error('Update shift error:', error);
