@@ -602,6 +602,7 @@ exports.getPayrollByEmployeeAndMonth = async (req, res) => {
 };
 
 // Controller: Get all employees' payroll history by company ID - UPDATED with aggregate pending advances
+// Controller: Get all employees' payroll history by company ID - UPDATED with manual department name resolution
 exports.getCompanyPayrollHistory = async (req, res) => {
   try {
     let companyId = req.query.companyId || req.user.companyId || req.user.id;  // Allow query param (e.g., for superadmin); default to user's company
@@ -618,19 +619,45 @@ exports.getCompanyPayrollHistory = async (req, res) => {
       filters.payrollMonth = `${year}-${monthStr}`;
     }
 
-    // UPDATED: Use nested populate for employee and its department array
-    // This ensures department (array of ObjectIds) gets populated with departmentName and name
+    // Fetch payrolls with employee data (no populate for department since schema doesn't support it)
     const payrolls = await Payroll.find(filters)
-      .populate({
-        path: 'employee',
-        select: 'teamMemberName name employeeId',  // Select employee fields (exclude department here)
-        populate: {
-          path: 'department',  // Populate the department array within employee
-          select: 'departmentName name'  // Select department fields
-        }
-      })
+      .populate('employee', 'teamMemberName name employeeId department')  // Populate employee but not department
       .sort({ payrollMonth: -1, createdAt: -1 })  // Recent months first
       .limit(100);  // Reasonable limit
+
+    // Collect all unique department IDs from all employees
+    const allDeptIds = [];
+    payrolls.forEach(payroll => {
+      if (payroll.employee && Array.isArray(payroll.employee.department)) {
+        allDeptIds.push(...payroll.employee.department);
+      }
+    });
+    const uniqueDeptIds = [...new Set(allDeptIds)];  // Remove duplicates
+
+    // Fetch department names for these IDs (only if there are IDs)
+    let deptMap = new Map();
+    if (uniqueDeptIds.length > 0) {
+      const departments = await mongoose.connection.db.collection('departments').find({
+        _id: { $in: uniqueDeptIds.map(id => new mongoose.Types.ObjectId(id)) }
+      }).project({ name: 1 }).toArray();  // Fetch only name field
+
+      // Create a map of ID (string) to name
+      departments.forEach(dept => {
+        deptMap.set(dept._id.toString(), dept.name || 'Unknown Dept');
+      });
+    }
+
+    // Replace department IDs with names in each payroll
+    const enhancedPayrolls = payrolls.map(payroll => {
+      const payrollObj = payroll.toObject();
+      if (payrollObj.employee && Array.isArray(payrollObj.employee.department)) {
+        // Replace IDs with names using the map
+        payrollObj.employee.department = payrollObj.employee.department.map(deptId => 
+          deptMap.get(deptId) || 'Unknown Dept'
+        );
+      }
+      return payrollObj;
+    });
 
     // UPDATED: Fix ObjectId constructor in aggregation pipeline (already correct in your code)
     const allPendingAdvances = await SalaryAdvance.aggregate([
@@ -655,7 +682,7 @@ exports.getCompanyPayrollHistory = async (req, res) => {
     ]);
 
     // NEW: Enhance each payroll with employee-specific pending advances (optional, for detailed view)
-    const enhancedPayrolls = await Promise.all(payrolls.map(async (payroll) => {
+    const finalPayrolls = await Promise.all(enhancedPayrolls.map(async (payroll) => {
       const employeePendingAdvances = await SalaryAdvance.find({
         company: companyId,
         employee: payroll.employee._id,
@@ -665,7 +692,7 @@ exports.getCompanyPayrollHistory = async (req, res) => {
       const totalEmployeePending = employeePendingAdvances.reduce((sum, adv) => sum + adv.amount, 0);
 
       return {
-        ...payroll.toObject(),
+        ...payroll,
         employeePendingAdvances: totalEmployeePending  // NEW: Per-employee pending for this payroll record
       };
     }));
@@ -673,7 +700,7 @@ exports.getCompanyPayrollHistory = async (req, res) => {
     res.json({
       message: `Company payroll history for ${companyId}`,
       companyId,
-      payrolls: enhancedPayrolls,  // Enhanced with pending advances
+      payrolls: finalPayrolls,  // Enhanced with department names and pending advances
       pendingAdvancesSummary: {  // NEW: Company-wide aggregate
         totalPendingAcrossCompany: allPendingAdvances.reduce((sum, emp) => sum + emp.totalPending, 0),
         topPendingEmployees: allPendingAdvances,  // Array of { _id, totalPending, count, employee }
