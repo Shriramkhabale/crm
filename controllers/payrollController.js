@@ -604,7 +604,7 @@ exports.getPayrollByEmployeeAndMonth = async (req, res) => {
 // Controller: Get all employees' payroll history by company ID - UPDATED with aggregate pending advances
 exports.getCompanyPayrollHistory = async (req, res) => {
   try {
-    let companyId = req.query.companyId || req.user.companyId ||  req.user.id;  // Allow query param (e.g., for superadmin); default to user's company
+    let companyId = req.query.companyId || req.user.companyId || req.user.id;  // Allow query param (e.g., for superadmin); default to user's company
 
     if (!companyId) {
       return res.status(400).json({ message: 'companyId is required' });
@@ -618,33 +618,35 @@ exports.getCompanyPayrollHistory = async (req, res) => {
       filters.payrollMonth = `${year}-${monthStr}`;
     }
 
+    // UPDATED: Populate with fields the frontend expects (teamMemberName, name, employeeId, department)
+    // If department is a reference array, populate it deeply; if embedded, just select it
     const payrolls = await Payroll.find(filters)
-      .populate('employee', 'firstName lastName department salary')
+      .populate('employee', 'teamMemberName name employeeId department')  // ✅ ADDED teamMemberName, name, employeeId; kept department
+      .populate('employee.department', 'departmentName name')  // ✅ If department is a reference array, populate sub-fields
       .sort({ payrollMonth: -1, createdAt: -1 })  // Recent months first
       .limit(100);  // Reasonable limit
 
-// UPDATED: Fix ObjectId constructor in aggregation pipeline
-const allPendingAdvances = await SalaryAdvance.aggregate([
-  { $match: { company: new mongoose.Types.ObjectId(companyId), deductedInPayroll: null } },
-  {
-    $group: {
-      _id: '$employee',
-      totalPending: { $sum: '$amount' },
-      count: { $sum: 1 }
-    }
-  },
-  { $lookup: {
-    from: 'employees',
-    localField: '_id',
-    foreignField: '_id',
-    as: 'employee',
-    pipeline: [{ $project: { teamMemberName: 1, department: 1 } }]
-  } },
-  { $unwind: '$employee' },
-  { $sort: { totalPending: -1 } },
-  { $limit: 10 }  // Top 10 employees with pending advances
-]);
-
+    // UPDATED: Fix ObjectId constructor in aggregation pipeline (already correct in your code)
+    const allPendingAdvances = await SalaryAdvance.aggregate([
+      { $match: { company: new mongoose.Types.ObjectId(companyId), deductedInPayroll: null } },
+      {
+        $group: {
+          _id: '$employee',
+          totalPending: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      },
+      { $lookup: {
+        from: 'employees',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'employee',
+        pipeline: [{ $project: { teamMemberName: 1, department: 1 } }]  // ✅ Ensure teamMemberName is included here too
+      } },
+      { $unwind: '$employee' },
+      { $sort: { totalPending: -1 } },
+      { $limit: 10 }  // Top 10 employees with pending advances
+    ]);
 
     // NEW: Enhance each payroll with employee-specific pending advances (optional, for detailed view)
     const enhancedPayrolls = await Promise.all(payrolls.map(async (payroll) => {
@@ -679,3 +681,4 @@ const allPendingAdvances = await SalaryAdvance.aggregate([
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
