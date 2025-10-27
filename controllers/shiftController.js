@@ -12,7 +12,7 @@ exports.createShift = async (req, res) => {
     
     console.log("req.user",req.user);
     
-    const shift = new Shift({ name, startTime, endTime, company: req.user.companyId || req.user.id 
+    const shift = new Shift({ name, startTime, endTime, company: req.user.companyId || req.user.userId 
 });
     await shift.save();
 
@@ -27,7 +27,7 @@ exports.createShift = async (req, res) => {
 exports.getAllShifts = async (req, res) => {
   try {
     // UPDATED: Filter shifts by the user's company only
-    const shifts = await Shift.find({ company: req.user.companyId || req.user.id }).sort({ createdAt: -1 });
+    const shifts = await Shift.find({ company: req.user.companyId || req.user.userId }).sort({ createdAt: -1 });
     res.json(shifts);
   } catch (error) {
     console.error('Get shifts error:', error);
@@ -58,7 +58,7 @@ exports.updateShift = async (req, res) => {
     const updates = req.body;
     // UPDATED: Ensure the shift belongs to the user's company
     const shift = await Shift.findOneAndUpdate(
-      { _id: shiftId, company: req.user.companyId || req.user.id }, 
+      { _id: shiftId, company: req.user.companyId || req.user.userId }, 
       updates, 
       { new: true, runValidators: true }
     );
