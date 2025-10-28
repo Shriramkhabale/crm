@@ -260,11 +260,9 @@ exports.createEmployee = async (req, res) => {
 };
 
 
-
 // Controller: Update employee (fixed + dynamic docs)
 exports.updateEmployee = async (req, res) => {
   try {
-
     const { id } = req.params;
     const employee = await Employee.findById(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
@@ -376,20 +374,42 @@ exports.updateEmployee = async (req, res) => {
     if (qrCode !== undefined) employee.qrCode = qrCode;
 
     // PF/ESIC: Only set percentages if enabled
-    if (pfEnabled === 'true' || pfEnabled === true) {
-      employee.pfEnabled = true;
-      if (pfPercentage !== undefined) employee.pfPercentage = pfPercentage;
-    } else {
-      employee.pfEnabled = false;
-      employee.pfPercentage = undefined;
-    }
-    if (esicEnabled === 'true' || esicEnabled === true) {
-      employee.esicEnabled = true;
-      if (esicPercentage !== undefined) employee.esicPercentage = esicPercentage;
-    } else {
-      employee.esicEnabled = false;
-      employee.esicPercentage = undefined;
-    }
+    // if (pfEnabled === 'true' || pfEnabled === true) {
+    //   employee.pfEnabled = true;
+    //   if (pfPercentage !== undefined) employee.pfPercentage = pfPercentage;
+    // } else {
+    //   employee.pfEnabled = false;
+    //   employee.pfPercentage = undefined;
+    // }
+    // if (esicEnabled === 'true' || esicEnabled === true) {
+    //   employee.esicEnabled = true;
+    //   if (esicPercentage !== undefined) employee.esicPercentage = esicPercentage;
+    // } else {
+    //   employee.esicEnabled = false;
+    //   employee.esicPercentage = undefined;
+    // }
+
+
+    // Replace the PF/ESIC block with this:
+if (pfEnabled !== undefined) {
+  const isEnabled = pfEnabled === 'true' || pfEnabled === true;
+  employee.pfEnabled = isEnabled;
+  if (pfPercentage !== undefined) {
+    employee.pfPercentage = pfPercentage;
+  } else if (!isEnabled) {
+    employee.pfPercentage = undefined;  // Only remove if disabled and no percentage sent
+  }
+}
+if (esicEnabled !== undefined) {
+  const isEnabled = esicEnabled === 'true' || esicEnabled === true;
+  employee.esicEnabled = isEnabled;
+  if (esicPercentage !== undefined) {
+    employee.esicPercentage = esicPercentage;
+  } else if (!isEnabled) {
+    employee.esicPercentage = undefined;  // Only remove if disabled and no percentage sent
+  }
+}
+
 
     // Arrays: Coerce if needed
     if (paidLeaves !== undefined) {
