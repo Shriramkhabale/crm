@@ -264,13 +264,6 @@ exports.createEmployee = async (req, res) => {
 // Controller: Update employee (fixed + dynamic docs)
 exports.updateEmployee = async (req, res) => {
   try {
-    // Log incoming data for debugging
-    console.log('🔍 UPDATE DEBUG - Full req.body keys:', Object.keys(req.body));
-    console.log('🔍 UPDATE DEBUG - newDocumentTypes raw:', { type: typeof req.body.newDocumentTypes, value: req.body.newDocumentTypes });
-    console.log('🔍 UPDATE DEBUG - removeDocuments raw:', { type: typeof req.body.removeDocuments, value: req.body.removeDocuments });
-    console.log('🔍 UPDATE DEBUG - departments raw:', { type: typeof req.body.departments, value: req.body.departments });
-    console.log('🔍 UPDATE DEBUG - req.files keys:', req.files ? Object.keys(req.files) : 'no files');
-    console.log('🔍 UPDATE DEBUG - documents files:', req.files?.documents ? `${req.files.documents.length} file(s)` : 'none');
 
     const { id } = req.params;
     const employee = await Employee.findById(id);
@@ -403,7 +396,7 @@ exports.updateEmployee = async (req, res) => {
       employee.paidLeaves = Array.isArray(paidLeaves) ? paidLeaves : [];
     }
     if (weeklyHoliday !== undefined) {
-      employee.weeklyHoliday = Array.isArray(weeklyHoliday) ? weeklyHoliday : [];
+      employee.weeklyHoliday = JSON.parse(weeklyHoliday || '[]');
     }
     if (accessPermissions !== undefined) {
       employee.accessPermissions = Array.isArray(accessPermissions) ? accessPermissions : [];
