@@ -325,213 +325,227 @@ const convertToArray = (objOrArray, category) => {
 // UPDATED: generatePayroll - Use provided attendance values instead of recalculating
 
 
-exports.generatePayroll = async (req, res) => {
-  console.log("req.body", req.body);
-  console.log("req.user", req.user);
-  
-  try {
-    const { 
-      employeeId, 
-      payrollMonth, 
-      totalWorkingDays, 
-      totalHalfDays, 
-      totalLeaves, 
-      totalWeeklyHolidays, 
-      totalCompanyHolidays,
-      deductions = [], 
-      incomes = [] 
-    } = req.body; // Use provided attendance values
-    let companyId = req.user.companyId || req.user.id;
-    
-    if (!employeeId || !companyId) {
-      return res.status(400).json({ message: 'employeeId and companyId are required' });
-    }
+   // UPDATED: generatePayroll - Calculate totalWeeklyHolidays based on employee's weeklyHoliday array
+   exports.generatePayroll = async (req, res) => {
+     console.log("req.body", req.body);
+     console.log("req.user", req.user);
+     
+     try {
+       const { 
+         employeeId, 
+         payrollMonth, 
+         totalWorkingDays, 
+         totalHalfDays, 
+         totalLeaves, 
+         totalWeeklyHolidays,  // This will be overridden by calculation
+         totalCompanyHolidays,
+         deductions = [], 
+         incomes = [] 
+       } = req.body; // Use provided attendance values
+       let companyId = req.user.companyId || req.user.id;
+       
+       if (!employeeId || !companyId) {
+         return res.status(400).json({ message: 'employeeId and companyId are required' });
+       }
 
-    // UPDATED: Use provided attendance values instead of recalculating
-    const finalTotalWorkingDays = parseInt(totalWorkingDays) || 0;
-    const finalTotalHalfDays = parseInt(totalHalfDays) || 0;
-    const finalTotalLeaves = parseInt(totalLeaves) || 0;
-    const finalTotalWeeklyHolidays = parseInt(totalWeeklyHolidays) || 0;
-    const finalTotalCompanyHolidays = parseInt(totalCompanyHolidays) || 0;
+       // UPDATED: Use provided attendance values except totalWeeklyHolidays (calculated below)
+       const finalTotalWorkingDays = parseInt(totalWorkingDays) || 0;
+       const finalTotalHalfDays = parseInt(totalHalfDays) || 0;
+       const finalTotalLeaves = parseInt(totalLeaves) || 0;
+       // finalTotalWeeklyHolidays will be calculated below
+      //  const finalTotalCompanyHolidays = parseInt(totalCompanyHolidays) || 0;
 
-    // UPDATED: Handle dynamic deductions/incomes (arrays or legacy objects)
-    let deductionsArray = convertToArray(deductions, 'deductions');
-    let incomesArray = convertToArray(incomes, 'incomes');
+       // UPDATED: Handle dynamic deductions/incomes (arrays or legacy objects)
+       let deductionsArray = convertToArray(deductions, 'deductions');
+       let incomesArray = convertToArray(incomes, 'incomes');
 
-    // Validate arrays: Ensure each has type (string, non-empty) and amount (>=0 number)
-    deductionsArray = deductionsArray.filter(ded => {
-      if (typeof ded.type !== 'string' || ded.type.trim().length === 0) {
-        console.warn(`Invalid deduction skipped: Missing type for ${JSON.stringify(ded)}`);
-        return false;
-      }
-      if (typeof ded.amount !== 'number' || ded.amount < 0) {
-        console.warn(`Invalid deduction skipped: Invalid amount ${ded.amount} for ${ded.type}`);
-        return false;
-      }
-      return true;
-    });
+       // Validate arrays
+       deductionsArray = deductionsArray.filter(ded => {
+         if (typeof ded.type !== 'string' || ded.type.trim().length === 0) {
+           console.warn(`Invalid deduction skipped: Missing type for ${JSON.stringify(ded)}`);
+           return false;
+         }
+         if (typeof ded.amount !== 'number' || ded.amount < 0) {
+           console.warn(`Invalid deduction skipped: Invalid amount ${ded.amount} for ${ded.type}`);
+           return false;
+         }
+         return true;
+       });
 
-    incomesArray = incomesArray.filter(inc => {
-      if (typeof inc.type !== 'string' || inc.type.trim().length === 0) {
-        console.warn(`Invalid income skipped: Missing type for ${JSON.stringify(inc)}`);
-        return false;
-      }
-      if (typeof inc.amount !== 'number' || inc.amount < 0) {
-        console.warn(`Invalid income skipped: Invalid amount ${inc.amount} for ${inc.type}`);
-        return false;
-      }
-      return true;
-    });
+       incomesArray = incomesArray.filter(inc => {
+         if (typeof inc.type !== 'string' || inc.type.trim().length === 0) {
+           console.warn(`Invalid income skipped: Missing type for ${JSON.stringify(inc)}`);
+           return false;
+         }
+         if (typeof inc.amount !== 'number' || inc.amount < 0) {
+           console.warn(`Invalid income skipped: Invalid amount ${inc.amount} for ${inc.type}`);
+           return false;
+         }
+         return true;
+       });
 
-    console.log(`Processed ${deductionsArray.length} deductions and ${incomesArray.length} incomes`);
+       console.log(`Processed ${deductionsArray.length} deductions and ${incomesArray.length} incomes`);
 
-    // NEW: Fetch undeducted advances for this employee and add to deductions
-    const undeductedAdvances = await SalaryAdvance.find({
-      company: new mongoose.Types.ObjectId(companyId), // Fixed ObjectId
-      employee: employeeId,
-      deductedInPayroll: null  // Only undeducted ones
-    }).select('amount notes');  // Minimal fields
+       // NEW: Fetch undeducted advances
+       const undeductedAdvances = await SalaryAdvance.find({
+         company: new mongoose.Types.ObjectId(companyId),
+         employee: employeeId,
+         deductedInPayroll: null
+       }).select('amount notes');
 
-    if (undeductedAdvances.length > 0) {
-      console.log(`Found ${undeductedAdvances.length} undeducted advances for employee ${employeeId}`);
-      // Add each advance to deductions array (as 'Salary Advance' type)
-      const advanceDeductions = undeductedAdvances.map(adv => ({
-        type: 'Salary Advance',  // Fixed type for easy filtering/display
-        amount: adv.amount,
-        notes: adv.notes  // Optional: Include notes if needed for display
-      }));
-      deductionsArray = [...deductionsArray, ...advanceDeductions];
-      console.log('Advances added to deductions:', advanceDeductions);
-    }
+       if (undeductedAdvances.length > 0) {
+         const advanceDeductions = undeductedAdvances.map(adv => ({
+           type: 'Salary Advance',
+           amount: adv.amount,
+           notes: adv.notes
+         }));
+         deductionsArray = [...deductionsArray, ...advanceDeductions];
+         console.log('Advances added to deductions:', advanceDeductions);
+       }
 
-    // Default to current month if not provided
-    const now = new Date();
-    const defaultMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const finalPayrollMonth = payrollMonth || defaultMonth;
+       // Default payroll month
+       const now = new Date();
+       const defaultMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+       const finalPayrollMonth = payrollMonth || defaultMonth;
 
-    // Parse payrollMonth to get start/end dates
-    const [year, month] = finalPayrollMonth.split('-').map(Number);
+       // Parse month for days
+       const [year, month] = finalPayrollMonth.split('-').map(Number);
+       const totalMonthDays = new Date(year, month, 0).getDate();
 
-    // Fetch employee (validate company)
-    const employee = await Employee.findOne({ _id: employeeId, company: new mongoose.Types.ObjectId(companyId) }); // Fixed ObjectId
-    if (!employee) {
-      return res.status(404).json({ message: 'Employee not found in your company' });
-    }
+       // Fetch employee
+       const employee = await Employee.findOne({ _id: employeeId, company: new mongoose.Types.ObjectId(companyId) });
+       if (!employee) {
+         return res.status(404).json({ message: 'Employee not found in your company' });
+       }
 
-    // Base salary (parse if string)
-    const baseSalary = parseFloat(employee.salary) || 0;
-    const pfPercentage = parseFloat(employee.pfPercentage) || 0;  // Parse string to number
-    const esicPercentage = parseFloat(employee.esicPercentage) || 0;  // Parse string to number
+       // UPDATED: Calculate weekly holiday count for the month based on employee's weeklyHoliday
+       let weeklyHolidayCount = 0;
+       const weeklyHolidays = employee.weeklyHoliday || [];  // e.g., ['Sun']
+       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+       const weeklyHolidayDays = weeklyHolidays.map(day => dayNames.indexOf(day)).filter(day => day !== -1);  // Convert to day numbers (0=Sun, etc.)
 
-    // Calculate PF and ESIC amounts (only if percentage > 0)
-    if (pfPercentage > 0) {
-      const pfAmount = (baseSalary * pfPercentage) / 100;
-      if (pfAmount > 0) {
-        deductionsArray.push({
-          type: 'PF (Provident Fund)',
-          amount: pfAmount
-        });
-        console.log(`Added automatic PF deduction: ${pfAmount} (based on ${pfPercentage}% of ${baseSalary})`);
-      }
-    }
-    if (esicPercentage > 0) {
-      const esicAmount = (baseSalary * esicPercentage) / 100;
-      if (esicAmount > 0) {
-        deductionsArray.push({
-          type: 'ESIC (Employees\' State Insurance)',
-          amount: esicAmount
-        });
-        console.log(`Added automatic ESIC deduction: ${esicAmount} (based on ${esicPercentage}% of ${baseSalary})`);
-      }
-    }
+       for (let d = 1; d <= totalMonthDays; d++) {
+         const currentDate = new Date(year, month - 1, d);
+         const dayOfWeek = currentDate.getDay();  // 0=Sun, 1=Mon, etc.
+         if (weeklyHolidayDays.includes(dayOfWeek)) {
+           weeklyHolidayCount++;
+         }
+       }
 
-    // UPDATED: Calculate totals from dynamic arrays (now includes advances)
-    const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
-    const totalIncomes = incomesArray.reduce((sum, inc) => sum + inc.amount, 0);
+       const finalTotalWeeklyHolidays = weeklyHolidayCount;  // Override frontend value
 
-    // UPDATED: Use provided attendance values for calculations
-    const totalHolidayCount = finalTotalWeeklyHolidays + finalTotalCompanyHolidays;
-    const totalPossibleWorkingDays = new Date(year, month, 0).getDate() - totalHolidayCount;
+       // Fetch company holidays for the month
+       const companyHolidays = await Holiday.find({
+         company: new mongoose.Types.ObjectId(companyId),
+         date: { $gte: new Date(year, month - 1, 1), $lte: new Date(year, month, 0, 23, 59, 59, 999) }
+       });
+       const finalTotalCompanyHolidays = companyHolidays.length;  // Override frontend value if needed
 
-    // Calculations (unchanged)
-    const dailySalary = totalPossibleWorkingDays > 0 ? baseSalary / totalPossibleWorkingDays : 0;
-    const leaveDeduction = dailySalary * finalTotalLeaves;  // Full day for unpaid
-    const halfDayDeduction = dailySalary * 0.5 * finalTotalHalfDays;
-    const totalLeaveHalfDeductions = leaveDeduction + halfDayDeduction;
+       // Base salary
+       const baseSalary = parseFloat(employee.salary) || 0;
+       const pfPercentage = parseFloat(employee.pfPercentage) || 0;
+       const esicPercentage = parseFloat(employee.esicPercentage) || 0;
 
-    const totalDeductions = totalDeductionsManual + totalLeaveHalfDeductions;
-    const netSalary = baseSalary - totalDeductions + totalIncomes;
-console.log("employee---",employee);
+       // Calculate per-day rate and proportional grossSalary
+       const perDayRate = baseSalary / totalMonthDays;
+       const effectiveWorkingDays = finalTotalWorkingDays + (finalTotalHalfDays * 0.5);
+       const paidHolidayDays = finalTotalWeeklyHolidays + finalTotalCompanyHolidays;
+       const totalPaidDays = effectiveWorkingDays + paidHolidayDays;
+       const grossSalary = totalPaidDays * perDayRate;
 
-    // NEW: Save payroll first (to get ID for advance updates)
-    const payroll = new Payroll({
-      company: new mongoose.Types.ObjectId(companyId), // Fixed ObjectId
-      employee: employeeId,
-      salary: baseSalary,
-      weeklyHoliday: employee.weeklyHoliday || [],
-      totalWorkingDays: finalTotalWorkingDays, // Use provided value
-      totalHalfDays: finalTotalHalfDays, // Use provided value
-      paidLeaves: finalTotalLeaves, // Use provided value
-      holidayCount: totalHolidayCount,
-      deductions: deductionsArray,  // Includes user + advances
-      incomes: incomesArray,
-      totalDeductions,
-      totalIncomes,
-      netSalary,
-      payrollMonth: finalPayrollMonth,
-    });
+       // Calculate PF and ESIC on base salary
+       if (pfPercentage > 0) {
+         const pfAmount = (baseSalary * pfPercentage) / 100;
+         if (pfAmount > 0) {
+           deductionsArray.push({
+             type: 'PF (Provident Fund)',
+             amount: pfAmount
+           });
+           console.log(`Added PF deduction: ${pfAmount}`);
+         }
+       }
+       if (esicPercentage > 0) {
+         const esicAmount = (baseSalary * esicPercentage) / 100;
+         if (esicAmount > 0) {
+           deductionsArray.push({
+             type: 'ESIC (Employees\' State Insurance)',
+             amount: esicAmount
+           });
+           console.log(`Added ESIC deduction: ${esicAmount}`);
+         }
+       }
 
-    await payroll.save();
+       // totalDeductionsManual
+       const totalDeductionsManual = deductionsArray.reduce((sum, ded) => sum + ded.amount, 0);
+       const totalIncomes = incomesArray.reduce((sum, inc) => sum + inc.amount, 0);
 
-    // NEW: After saving, mark undeducted advances as deducted in this payroll
-    if (undeductedAdvances.length > 0) {
-      const updatePromises = undeductedAdvances.map(async (adv) => {
-        await SalaryAdvance.findByIdAndUpdate(adv._id, { deductedInPayroll: payroll._id });
-        console.log(`Marked advance ${adv._id} as deducted in payroll ${payroll._id}`);
-      });
-      await Promise.all(updatePromises);
-      console.log(`All ${undeductedAdvances.length} advances marked as deducted`);
-    }
+       // netSalary
+       const netSalary = grossSalary + totalIncomes - totalDeductionsManual;
 
-    // Populate for full salary slip
-    await payroll.populate('employee', 'firstName lastName salary department');
+       // Save payroll
+       const payroll = new Payroll({
+         company: new mongoose.Types.ObjectId(companyId),
+         employee: employeeId,
+         salary: baseSalary,
+         weeklyHoliday: employee.weeklyHoliday || [],
+         totalWorkingDays: finalTotalWorkingDays,
+         totalHalfDays: finalTotalHalfDays,
+         paidLeaves: 0,
+         holidayCount: paidHolidayDays,
+         deductions: deductionsArray,
+         incomes: incomesArray,
+         totalDeductions: totalDeductionsManual,
+         totalIncomes,
+         netSalary,
+         payrollMonth: finalPayrollMonth,
+       });
 
-    const advanceDeductions = deductionsArray.filter(ded => ded.type === 'Salary Advance');
-    const totalAdvancesDeducted = advanceDeductions.reduce((sum, ded) => sum + ded.amount, 0);
+       await payroll.save();
 
-    // NEW: Extract PF/ESIC from deductions for summary (optional, for frontend breakdown)
-    const pfDeduction = deductionsArray.find(ded => ded.type === 'PF (Provident Fund)') || { amount: 0 };
-    const esicDeduction = deductionsArray.find(ded => ded.type === 'ESIC (Employees\' State Insurance)') || { amount: 0 };
+       // Mark advances as deducted
+       if (undeductedAdvances.length > 0) {
+         const updatePromises = undeductedAdvances.map(async (adv) => {
+           await SalaryAdvance.findByIdAndUpdate(adv._id, { deductedInPayroll: payroll._id });
+         });
+         await Promise.all(updatePromises);
+       }
 
-    res.status(201).json({
-      message: 'Salary slip generated successfully',
-      payroll,  // Stored details (deductions includes PF/ESIC)
-      summary: {  // Calculated values for frontend
-        baseSalary,
-        totalPossibleWorkingDays,
-        dailySalary,
-        workedDays: finalTotalWorkingDays + (finalTotalHalfDays * 0.5),
-        paidLeaves: finalTotalLeaves,
-        unpaidLeaves: finalTotalLeaves, // Assuming provided leaves are unpaid
-        holidayCount: totalHolidayCount,
-        deductions: deductionsArray,  // Full list (includes PF/ESIC + advances)
-        advancesDeducted: advanceDeductions,  // Advances only
-        totalAdvancesDeducted,  // Sum of advances
-        pfDeduction: pfDeduction.amount,  // NEW: PF amount
-        esicDeduction: esicDeduction.amount,  // NEW: ESIC amount
-        totalDeductionsManual,  // Sum of all manual (user + advances + PF/ESIC)
-        totalLeaveHalfDeductions,
-        totalDeductions,
-        incomes: incomesArray,
-        totalIncomes,
-        netSalary
-      }
-    });
-  } catch (error) {
-    console.error('Payroll generation error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
+       // Populate and respond
+       await payroll.populate('employee', 'firstName lastName salary department');
+
+       const advanceDeductions = deductionsArray.filter(ded => ded.type === 'Salary Advance');
+       const totalAdvancesDeducted = advanceDeductions.reduce((sum, ded) => sum + ded.amount, 0);
+
+       const pfDeduction = deductionsArray.find(ded => ded.type === 'PF (Provident Fund)') || { amount: 0 };
+       const esicDeduction = deductionsArray.find(ded => ded.type === 'ESIC (Employees\' State Insurance)') || { amount: 0 };
+
+       res.status(201).json({
+         message: 'Salary slip generated successfully',
+         payroll,
+         summary: {
+           baseSalary,
+           grossSalary,
+           perDayRate,
+           effectiveWorkingDays,
+           paidHolidayDays,
+           totalPaidDays,
+           deductions: deductionsArray,
+           advancesDeducted: advanceDeductions,
+           totalAdvancesDeducted,
+           pfAmount: pfDeduction.amount,
+           esicAmount: esicDeduction.amount,
+           totalDeductionsManual,
+           incomes: incomesArray,
+           totalIncomes,
+           netSalary
+         }
+       });
+     } catch (error) {
+       console.error('Payroll generation error:', error);
+       res.status(500).json({ message: 'Server error', error: error.message });
+     }
+   };
+   
 
 
 // Controller: Get salary slip by employee, year, month (company-scoped) - UPDATED with pending advances
