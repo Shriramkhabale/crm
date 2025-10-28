@@ -10,6 +10,7 @@ router.use(protect);
 
 // Generate payroll for selected employee (user fills deductions/incomes in body)
 router.post('/generate', payrollController.generatePayroll);
+router.get('/:id', payrollController.getPayrollById);
 
 // Get payroll slip by employee and month/year
 router.get('/:employeeId/year/:year/month/:month', payrollController.getPayrollByEmployeeAndMonth);
