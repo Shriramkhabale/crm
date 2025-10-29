@@ -15,6 +15,8 @@ router.post('/register-superadmin', authController.registerSuperadmin);
 // Login route
 router.post('/login', authController.login);
 
+router.get('/superadmin', protect, authorizeRole('superadmin'), authController.getSuperadmin);
+
 // Update superadmin profile (protected, superadmin only)
 router.put('/update-superadmin/:id', protect, authorizeRole('superadmin'), authController.updateSuperadmin);
 

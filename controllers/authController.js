@@ -1,3 +1,4 @@
+//controllers/authController.js
 const Superadmin = require('../models/User');
 const Employee = require('../models/Employee');
 const Company = require('../models/Company');
@@ -291,6 +292,37 @@ exports.updateSuperadmin = async (req, res) => {
 
     res.json({ message: 'User  updated successfully', user });
   } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+//fetch superadmin data
+exports.getSuperadmin = async (req, res) => {
+  try {
+    console.log("req",req.user);
+    
+    // Fetch the superadmin by ID from req.user (set by protect middleware)
+    const user = await Superadmin.findById(req.user.id).select('-password'); // Exclude password hash for security
+    if (!user) {
+      return res.status(404).json({ message: 'Superadmin not found' });
+    }
+    // Return the user data
+    res.json({
+      message: 'Superadmin data fetched successfully',
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        phoneNumber: user.phoneNumber,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        // Add any other fields you want to include (e.g., if you add more to the schema later)
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching superadmin:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
