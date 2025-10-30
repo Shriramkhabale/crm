@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
-  taskId: { type: String, unique: true, required: true  },  
+  taskId: { type: String, required: true  },  
   title: { type: String, required: true },
   description: String,
   department: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }], 
@@ -45,5 +45,7 @@ taskSchema.set('toObject', { virtuals: true });
 taskSchema.index({ company: 1, repeat: 1, recurrenceActive: 1 });  // Fast recurring parents
 taskSchema.index({ parentTask: 1, startDateTime: 1 });  // Fast instance lookup by date
 taskSchema.index({ startDateTime: 1 });  // Sort by date
+
+taskSchema.index({ taskId: 1, company: 1 }, { unique: true });
 
 module.exports = mongoose.model('Task', taskSchema);
