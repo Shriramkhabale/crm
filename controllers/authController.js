@@ -11,19 +11,21 @@ const jwt = require('jsonwebtoken');  // Assuming installed
 
 const Branch = require('../models/Branch');
 
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const nodemailer = require('nodemailer');
-// Configure Nodemailer (corrected)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,  // ONLY for development: skips certificate validation
-  },
-});
+// const nodemailer = require('nodemailer');
+// // Configure Nodemailer (corrected)
+// const transporter = nodemailer.createTransport({
+//   service: 'gmail',
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+//   tls: {
+//     rejectUnauthorized: false,  // ONLY for development: skips certificate validation
+//   },
+// });
 // Add this right after the transporter definition
 console.log('EMAIL_USER loaded:', process.env.EMAIL_USER ? 'Yes' : 'No');
 console.log('EMAIL_PASS loaded:', process.env.EMAIL_PASS ? 'Yes (length: ' + process.env.EMAIL_PASS.length + ')' : 'No');
@@ -353,68 +355,44 @@ exports.getSuperadmin = async (req, res) => {
 // Forgot Password
 exports.forgotPassword = async (req, res) => {
   console.log("req.body", req.body);
-  
+
   const { email } = req.body;
   try {
     let user = null;
-    let emailField = 'email';  // Default for Superadmin and Employee
-    
-    // Check Superadmin
-    user = await Superadmin.findOne({ email });
-    if (user) {
-      emailField = 'email';
-    } else {
-      // Check Employee
-      user = await Employee.findOne({ email });
-      if (user) {
-        emailField = 'email';
-      } else {
-        // Check Company
-        user = await Company.findOne({ businessEmail: email });
-        if (user) {
-          emailField = 'businessEmail';
-        } else {
-          // Check Franchise
-          user = await Franchise.findOne({ franchiseEmail: email });
-          if (user) {
-            emailField = 'franchiseEmail';
-          }
-        }
-      }
-    }
-    console.log("user", user);
-    
-    
-    // Check if user was found
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
+    let emailField = 'email';
+
+    // Search across all models
+    user = await Superadmin.findOne({ email }) ||
+           await Employee.findOne({ email }) ||
+           await Company.findOne({ businessEmail: email }) ||
+           await Franchise.findOne({ franchiseEmail: email });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     // Generate reset token
     const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     const hashedToken = await bcrypt.hash(resetToken, 10);
-    console.log("hashedToken", hashedToken);
-    
-    // Save to user
+
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 3600000;  // 1 hour
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await user.save();
-    
-    // Send email
+
+    // Send Reset Email using Resend
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    await resend.emails.send({
+      from: 'DGActive <onboarding@resend.dev>',
       to: email,
       subject: 'Password Reset Request',
       html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`,
-    };
-    await transporter.sendMail(mailOptions);
-    res.json({ message: 'Password reset email sent' });
+    });
+
+    res.json({ message: 'Password reset email sent successfully' });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 
 // Reset Password
