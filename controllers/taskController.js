@@ -9,12 +9,16 @@ const mongoose = require("mongoose");
 
 // Updated: Helper to get next sequential taskId per company (e.g., T1, T2 for each company)
 async function getNextSequenceValue(companyId, sequenceName = "taskid") {
-  const fullSequenceName = `${sequenceName}_${companyId}`; // e.g., taskid_64f1a2b3c4d5e6f7g8h9i0j
+  const fullSequenceName = `${sequenceName}_${companyId}`;
+  console.log(`🔢 Getting sequence for: ${fullSequenceName}`);  // Debug log
+
   const sequenceDoc = await Counter.findByIdAndUpdate(
     fullSequenceName,
     { $inc: { seq: 1 } },
     { new: true, upsert: true }
   );
+
+  console.log(`✅ Sequence updated: ${fullSequenceName} -> seq: ${sequenceDoc.seq}`);  // Debug log
   return sequenceDoc.seq;
 }
 
@@ -38,7 +42,6 @@ const validWeekDays = [
   "Saturday",
 ];
 
-// NEW: Helper to fetch holidays for a period (uses your existing schema: company, name, date)
 // UPDATED: Fetch holidays for a period (optimized for date-only matching)
 async function getHolidaysForPeriod(companyId, startDate, endDate) {
   try {
@@ -341,8 +344,10 @@ async function generateNextInstance(
     999
   );
 
- const instance = new Task({
-    taskId: `T${nextSeq}`,  // Set taskId here
+ // Generate taskId BEFORE creating the instance
+  const nextSeq = await getNextSequenceValue(companyId, "taskid");
+  const instance = new Task({
+    taskId: `T${nextSeq}`,  // Now nextSeq is defined
     title: parentTaskData.title,
     description: parentTaskData.description,
     department: parentTaskData.department,
@@ -361,8 +366,7 @@ async function generateNextInstance(
     isRecurringInstance: true,
     recurrenceActive: parentTaskData.recurrenceActive,
   });
-  await instance.save();  
-
+  await instance.save();  // Single save with taskId
   return instance;
 }
 
@@ -442,7 +446,6 @@ async function createInstance(
 
     const shiftMsg = isHoliday(instanceDate, holidays) ? "shifted " : "";
 
-    // Updated: Generate and assign taskId per company after saving
   const nextSeq = await getNextSequenceValue(companyObjId.toString(), "taskid");
     const instance = new Task({
       taskId: `T${nextSeq}`,  // Set taskId here
@@ -464,10 +467,9 @@ async function createInstance(
       isRecurringInstance: true,
       recurrenceActive: parentTaskData.recurrenceActive,
     });
-    await instance.save(); 
+    await instance.save();  // Single save with taskId
     return instance;
 
-    
   } catch (error) {
     console.error(
       `Error creating instance for ${instanceDate.toISOString()}:`,
