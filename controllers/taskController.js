@@ -341,7 +341,8 @@ async function generateNextInstance(
     999
   );
 
-  const instance = new Task({
+ const instance = new Task({
+    taskId: `T${nextSeq}`,  // Set taskId here
     title: parentTaskData.title,
     description: parentTaskData.description,
     department: parentTaskData.department,
@@ -360,18 +361,7 @@ async function generateNextInstance(
     isRecurringInstance: true,
     recurrenceActive: parentTaskData.recurrenceActive,
   });
-
-  await instance.save();
-  const shiftMsg =
-    workingDate.toISOString().split("T")[0] !==
-    dueDate.toISOString().split("T")[0]
-      ? "(shifted due to holiday)"
-      : "";
-
-  // Updated: Generate and assign taskId per company after saving
-  const nextSeq = await getNextSequenceValue(companyId, "taskid");
-  instance.taskId = `T${nextSeq}`;
-  await instance.save(); // Save again with taskId
+  await instance.save();  
 
   return instance;
 }
@@ -449,8 +439,13 @@ async function createInstance(
       }
     }
 
-    // Create new recurring instance
+
+    const shiftMsg = isHoliday(instanceDate, holidays) ? "shifted " : "";
+
+    // Updated: Generate and assign taskId per company after saving
+  const nextSeq = await getNextSequenceValue(companyObjId.toString(), "taskid");
     const instance = new Task({
+      taskId: `T${nextSeq}`,  // Set taskId here
       title: parentTaskData.title,
       description: parentTaskData.description,
       department: parentTaskData.department,
@@ -469,20 +464,10 @@ async function createInstance(
       isRecurringInstance: true,
       recurrenceActive: parentTaskData.recurrenceActive,
     });
-
-    await instance.save();
-
-    const shiftMsg = isHoliday(instanceDate, holidays) ? "shifted " : "";
-
-    // Updated: Generate and assign taskId per company after saving
-    const nextSeq = await getNextSequenceValue(
-      companyObjId.toString(),
-      "taskid"
-    );
-    instance.taskId = `T${nextSeq}`;
-    await instance.save(); // Save again with taskId
-
+    await instance.save(); 
     return instance;
+
+    
   } catch (error) {
     console.error(
       `Error creating instance for ${instanceDate.toISOString()}:`,
@@ -735,7 +720,13 @@ exports.createTask = async (req, res) => {
     const audios = req.files?.audios ? req.files.audios.map((f) => f.path) : [];
     const files = req.files?.files ? req.files.files.map((f) => f.path) : [];
 
+  
+    // Updated: Generate and assign taskId per company after saving
+    // if (!task.repeat) {
+      const nextSeq = await getNextSequenceValue(company, "taskid");
+
     const taskData = {
+      taskId: `T${nextSeq}`,  // Always set taskId here
       title,
       description,
       department: new mongoose.Types.ObjectId(department),
@@ -745,63 +736,22 @@ exports.createTask = async (req, res) => {
       repeat: repeat === "true",
       creditPoints: parseInt(creditPoints) || 0,
       repeatFrequency: repeat ? repeatFrequency : undefined,
-      repeatDaysOfWeek:
-        repeat && repeatFrequency === "weekly" ? repeatDaysOfWeek : undefined,
-      repeatDatesOfMonth:
-        repeat && repeatFrequency === "monthly"
-          ? repeatDatesOfMonth
-          : undefined,
+      repeatDaysOfWeek: repeat && repeatFrequency === "weekly" ? repeatDaysOfWeek : undefined,
+      repeatDatesOfMonth: repeat && repeatFrequency === "monthly" ? repeatDatesOfMonth : undefined,
       priority: priority || "medium",
-      nextFollowUpDateTime: !repeat
-        ? new Date(nextFollowUpDateTime)
-        : undefined,
+      nextFollowUpDateTime: !repeat ? new Date(nextFollowUpDateTime) : undefined,
       nextFinishDateTime: actualNextFinishDateTime,
       company: new mongoose.Types.ObjectId(company),
       status: status || "pending",
-      // createdBy: new mongoose.Types.ObjectId(createdBy),
-      createdBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId), // Use the logged-in user's ID
-
+      createdBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),
       images,
       audios,
       files,
       isRecurringInstance: false,
       recurrenceActive: repeat ? true : false,
     };
-
     const task = new Task(taskData);
-    await task.save();
-
-    // Updated: Generate and assign taskId per company after saving
-    // if (!task.repeat) {
-    //   const nextSeq = await getNextSequenceValue(company, "taskid");
-
-    // const taskData = {
-    //   taskId: `T${nextSeq}`,  // Always set taskId here
-    //   title,
-    //   description,
-    //   department: new mongoose.Types.ObjectId(department),
-    //   assignedTo: assignedToArray,
-    //   startDateTime: actualStartDateTime,
-    //   endDateTime: actualEndDateTime,
-    //   repeat: repeat === "true",
-    //   creditPoints: parseInt(creditPoints) || 0,
-    //   repeatFrequency: repeat ? repeatFrequency : undefined,
-    //   repeatDaysOfWeek: repeat && repeatFrequency === "weekly" ? repeatDaysOfWeek : undefined,
-    //   repeatDatesOfMonth: repeat && repeatFrequency === "monthly" ? repeatDatesOfMonth : undefined,
-    //   priority: priority || "medium",
-    //   nextFollowUpDateTime: !repeat ? new Date(nextFollowUpDateTime) : undefined,
-    //   nextFinishDateTime: actualNextFinishDateTime,
-    //   company: new mongoose.Types.ObjectId(company),
-    //   status: status || "pending",
-    //   createdBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),
-    //   images,
-    //   audios,
-    //   files,
-    //   isRecurringInstance: false,
-    //   recurrenceActive: repeat ? true : false,
-    // };
-    // const task = new Task(taskData);
-    // await task.save(); 
+    await task.save(); 
     // }
 
     let firstInstance = null;
