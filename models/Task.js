@@ -15,7 +15,7 @@ const taskSchema = new mongoose.Schema({
   repeatDaysOfWeek: [{ type: String, enum: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] }],  // Multi-select
   repeatDatesOfMonth: [{ type: Number, min: 1, max: 31 }], 
   creditPoints: { type: Number, default: 0 },
-  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+  priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
   nextFollowUpDateTime: { type: Date }, 
   nextFinishDateTime: { type: Date },
   recurringStartDate: { type: Date },
