@@ -14,22 +14,6 @@ const Branch = require('../models/Branch');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// const nodemailer = require('nodemailer');
-// // Configure Nodemailer (corrected)
-// const transporter = nodemailer.createTransport({
-//   service: 'gmail',
-//   auth: {
-//     user: process.env.EMAIL_USER,
-//     pass: process.env.EMAIL_PASS,
-//   },
-//   tls: {
-//     rejectUnauthorized: false,  // ONLY for development: skips certificate validation
-//   },
-// });
-// Add this right after the transporter definition
-console.log('EMAIL_USER loaded:', process.env.EMAIL_USER ? 'Yes' : 'No');
-console.log('EMAIL_PASS loaded:', process.env.EMAIL_PASS ? 'Yes (length: ' + process.env.EMAIL_PASS.length + ')' : 'No');
-
 
 // Register Superadmin
 exports.registerSuperadmin = async (req, res) => {
@@ -380,7 +364,7 @@ exports.forgotPassword = async (req, res) => {
     // Send Reset Email using Resend
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
     await resend.emails.send({
-      from: 'DGActive <onboarding@resend.dev>',
+      from: 'One Click CRM <onboarding@resend.dev>',
       to: email,
       subject: 'Password Reset Request',
       html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`,
