@@ -20,4 +20,12 @@ router.get('/superadmin', protect, authorizeRole('superadmin'), authController.g
 // Update superadmin profile (protected, superadmin only)
 router.put('/update-superadmin/:id', protect, authorizeRole('superadmin'), authController.updateSuperadmin);
 
+
+// Forgot password route (unprotected)
+router.post('/forgot-password', authController.forgotPassword);
+// Reset password route (unprotected, but requires token)
+router.post('/reset-password', authController.resetPassword);
+
+
+
 module.exports = router;

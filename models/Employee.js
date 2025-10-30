@@ -141,6 +141,18 @@ const employeeSchema = new mongoose.Schema({
   }],
 
   qrCode: { type: String }, 
+
+
+   // New fields for password reset
+  resetPasswordToken: {
+    type: String,  // Hashed token
+  },
+  resetPasswordExpires: {
+    type: Date,  // Expiration timestamp
+  },
+
+
+  
 }, { timestamps: true });
 
 // NEW: Ensure unique types within dynamic documents

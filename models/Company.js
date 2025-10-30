@@ -18,6 +18,13 @@ const companySchema = new mongoose.Schema({
   parentCompanyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   branches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Company' }] ,
   businessLogo: { type: String },
+   // New fields for password reset
+  resetPasswordToken: {
+    type: String,  // Hashed token
+  },
+  resetPasswordExpires: {
+    type: Date,  // Expiration timestamp
+  },
 }, { timestamps: true });
 
 // Hash password before saving

@@ -1,4 +1,5 @@
 //server.js
+require('dotenv').config();
 const express = require('express');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
@@ -44,7 +45,6 @@ const authMiddleware = require('./middleware/authMiddleware');
 
 const cors = require('cors');
 
-require('dotenv').config();
 
 const app = express();
 

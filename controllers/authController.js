@@ -2,9 +2,32 @@
 const Superadmin = require('../models/User');
 const Employee = require('../models/Employee');
 const Company = require('../models/Company');
+const Franchise = require('../models/Franchise');  // Add this import
+
 const bcrypt = require('bcryptjs');
 const generateToken = require('../utils/generateToken');
+const jwt = require('jsonwebtoken');  // Assuming installed
+
+
 const Branch = require('../models/Branch');
+
+
+const nodemailer = require('nodemailer');
+// Configure Nodemailer (corrected)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,  // ONLY for development: skips certificate validation
+  },
+});
+// Add this right after the transporter definition
+console.log('EMAIL_USER loaded:', process.env.EMAIL_USER ? 'Yes' : 'No');
+console.log('EMAIL_PASS loaded:', process.env.EMAIL_PASS ? 'Yes (length: ' + process.env.EMAIL_PASS.length + ')' : 'No');
+
 
 // Register Superadmin
 exports.registerSuperadmin = async (req, res) => {
@@ -323,6 +346,103 @@ exports.getSuperadmin = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching superadmin:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Forgot Password
+exports.forgotPassword = async (req, res) => {
+  console.log("req.body", req.body);
+  
+  const { email } = req.body;
+  try {
+    let user = null;
+    let emailField = 'email';  // Default for Superadmin and Employee
+    
+    // Check Superadmin
+    user = await Superadmin.findOne({ email });
+    if (user) {
+      emailField = 'email';
+    } else {
+      // Check Employee
+      user = await Employee.findOne({ email });
+      if (user) {
+        emailField = 'email';
+      } else {
+        // Check Company
+        user = await Company.findOne({ businessEmail: email });
+        if (user) {
+          emailField = 'businessEmail';
+        } else {
+          // Check Franchise
+          user = await Franchise.findOne({ franchiseEmail: email });
+          if (user) {
+            emailField = 'franchiseEmail';
+          }
+        }
+      }
+    }
+    console.log("user", user);
+    
+    
+    // Check if user was found
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Generate reset token
+    const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const hashedToken = await bcrypt.hash(resetToken, 10);
+    console.log("hashedToken", hashedToken);
+    
+    // Save to user
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 3600000;  // 1 hour
+    await user.save();
+    
+    // Send email
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Password Reset Request',
+      html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`,
+    };
+    await transporter.sendMail(mailOptions);
+    res.json({ message: 'Password reset email sent' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+  const { token, newPassword } = req.body;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+    // Find user across models
+    let user = await Superadmin.findById(userId);
+    if (!user) user = await Employee.findById(userId);
+    if (!user) user = await Company.findById(userId);
+    if (!user) user = await Franchise.findById(userId);
+    if (!user || !user.resetPasswordToken || user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+    const isValidToken = await bcrypt.compare(token, user.resetPasswordToken);
+    if (!isValidToken) {
+      return res.status(400).json({ message: 'Invalid token' });
+    }
+    // Update password
+    user.password = newPassword;  // Hashed by pre-save
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

@@ -15,6 +15,25 @@ const franchiseSchema = new mongoose.Schema({
   planPrice: { type: String },
   duration: { type: String },
   franchiseLogo: { type: String },  
+  // New fields for password reset
+  resetPasswordToken: {
+    type: String,  // Hashed token
+  },
+  resetPasswordExpires: {
+    type: Date,  // Expiration timestamp
+  },
+
 }, { timestamps: true });
 
-module.exports = mongoose.model('Franchise', franchiseSchema); 
+// Hash password before saving
+franchiseSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+module.exports = mongoose.model('Franchise', franchiseSchema);

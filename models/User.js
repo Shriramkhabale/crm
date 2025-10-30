@@ -27,11 +27,18 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
     },
+    // New fields for password reset
+    resetPasswordToken: {
+      type: String,  // Hashed token
+    },
+    resetPasswordExpires: {
+      type: Date,  // Expiration timestamp
+    },
   },
   { timestamps: true }
 );
 
-// Hash the password before saving
+// Hash the password before saving (existing)
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
 
