@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
-  taskId: { type: String, unique: true },  
+  taskId: { type: String, unique: true, required: true  },  
   title: { type: String, required: true },
   description: String,
   department: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }], 
