@@ -43,6 +43,41 @@ exports.createLeave = async (req, res) => {
   }
 };
 
+exports.updateLeave = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, fromDate, toDate, contact, leaveType } = req.body;
+    // Find the leave request
+    const leave = await Leave.findById(id);
+    if (!leave) {
+      return res.status(404).json({ message: 'Leave request not found' });
+    }
+    // Optional: Check if the user is authorized to update this leave (e.g., only the employee who created it)
+    if (leave.employee.toString() !== req.user.employeeId) {
+      return res.status(403).json({ message: 'Not authorized to update this leave request' });
+    }
+    // Optional: Prevent updates if status is not 'Pending'
+    if (leave.status !== 'Pending') {
+      return res.status(400).json({ message: 'Cannot update leave request that is not pending' });
+    }
+    // Update the leave request
+    const updatedLeave = await Leave.findByIdAndUpdate(
+      id,
+      {
+        reason,
+        fromDate,
+        toDate,
+        contact,
+        leaveType
+      },
+      { new: true, runValidators: true }
+    );
+    res.json({ message: 'Leave request updated successfully', leave: updatedLeave });
+  } catch (error) {
+    console.error('Update leave error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 
 exports.getLeaves = async (req, res) => {
   try {

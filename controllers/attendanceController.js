@@ -11,66 +11,6 @@ async function getCompanyIdFromUser (user) {
   }
 }
 
-// // Create or update attendance record for an employee on a date
-// exports.markAttendance = async (req, res) => {
-//   try {
-//     const company = await getCompanyIdFromUser (req.user);
-//     const {
-//       employee, // employee ID
-//       date,
-//       inTime,
-//       inLocation,
-//       inPhoto,
-//       outTime,
-//       outLocation,
-//       outPhoto,
-//       status,
-//     } = req.body;
-
-//     if (!employee || !date || !inTime) {
-//       return res.status(400).json({ message: 'employee, date, and inTime are required' });
-//     }
-
-//     // Validate employee belongs to company
-//     const emp = await Employee.findOne({ _id: employee, company });
-//     if (!emp) {
-//       return res.status(400).json({ message: 'Employee not found in your company' });
-//     }
-
-//     // Calculate workingTime if outTime is provided
-//     let workingTime = null;
-//     if (outTime) {
-//       const inDate = new Date(inTime);
-//       const outDate = new Date(outTime);
-//       workingTime = Math.max(0, (outDate - inDate) / 1000 / 60); // minutes
-//     }
-
-//     // Upsert attendance record for employee and date
-//     const attendance = await Attendance.findOneAndUpdate(
-//       { company, employee, date: new Date(date).setHours(0,0,0,0) },
-//       {
-//         company,
-//         employee,
-//         date: new Date(date).setHours(0,0,0,0),
-//         inTime,
-//         inLocation,
-//         inPhoto,
-//         outTime,
-//         outLocation,
-//         outPhoto,
-//         workingTime,
-//         status: status || 'Present',
-//       },
-//       { upsert: true, new: true, setDefaultsOnInsert: true }
-//     );
-
-//     res.status(200).json({ message: 'Attendance marked successfully', attendance });
-//   } catch (error) {
-//     console.error('Mark attendance error:', error);
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
-
 // Mark attendance with image upload support
 exports.markAttendanceWithImages = async (req, res) => {
   try {
@@ -86,12 +26,21 @@ exports.markAttendanceWithImages = async (req, res) => {
       status,
     } = req.body;
 
+
+console.log("req.body",req.body);
+
     if (!employee || !date || !inTime) {
       return res.status(400).json({ message: 'employee, date, and inTime are required' });
     }
 
+
+    console.log("employee-",employee);
+    console.log("company2- ",company);
+    
     // Validate employee belongs to company
     const emp = await Employee.findOne({ _id: employee, company });
+    console.log("emp",emp);
+    
     if (!emp) {
       return res.status(400).json({ message: 'Employee not found in your company' });
     }
@@ -215,30 +164,6 @@ exports.getAttendanceById = async (req, res) => {
   }
 };
 
-// exports.updateAttendance = async (req, res) => {
-//   try {
-//     const company = await getCompanyIdFromUser (req.user);
-//     const { id } = req.params;
-//     const updateData = req.body;
-
-
-//     // Find and update attendance record belonging to company
-//     const attendance = await Attendance.findOneAndUpdate(
-//       { _id: id, company },
-//       updateData,
-//       { new: true, runValidators: true }
-//     );
-
-//     if (!attendance) {
-//       return res.status(404).json({ message: 'Attendance record not found or not authorized' });
-//     }
-
-//     res.json({ message: 'Attendance updated successfully', attendance });
-//   } catch (error) {
-//     console.error('Update attendance error:', error);
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
 
 
 
