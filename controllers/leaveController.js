@@ -52,7 +52,7 @@ exports.updateLeave = async (req, res) => {
     if (!leave) {
       return res.status(404).json({ message: 'Leave request not found' });
     }
-    console.log("req.user",req.user);
+    console.log("req.user leave update--",req.user);
     
     // Optional: Check if the user is authorized to update this leave (e.g., only the employee who created it)
     if (leave.employee.toString() !== req.user.employeeId || req.user.userId) {
