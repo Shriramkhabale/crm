@@ -43,43 +43,55 @@ exports.createLeave = async (req, res) => {
   }
 };
 
-exports.updateLeave = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { reason, fromDate, toDate, contact, leaveType } = req.body;
-    // Find the leave request
-    const leave = await Leave.findById(id);
-    if (!leave) {
-      return res.status(404).json({ message: 'Leave request not found' });
-    }
-    console.log("req.user leave update--",req.user);
-    
-    // Optional: Check if the user is authorized to update this leave (e.g., only the employee who created it)
-    if (leave.employee.toString() !== req.user.employeeId || req.user.userId) {
-      return res.status(403).json({ message: 'Not authorized to update this leave request' });
-    }
-    // Optional: Prevent updates if status is not 'Pending'
-    if (leave.status !== 'Pending') {
-      return res.status(400).json({ message: 'Cannot update leave request that is not pending' });
-    }
-    // Update the leave request
-    const updatedLeave = await Leave.findByIdAndUpdate(
-      id,
-      {
-        reason,
-        fromDate,
-        toDate,
-        contact,
-        leaveType
-      },
-      { new: true, runValidators: true }
-    );
-    res.json({ message: 'Leave request updated successfully', leave: updatedLeave });
-  } catch (error) {
-    console.error('Update leave error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
+   exports.updateLeave = async (req, res) => {
+     try {
+       const { id } = req.params;
+       const { reason, fromDate, toDate, contact, leaveType } = req.body;
+
+       // Find the leave request
+       const leave = await Leave.findById(id);
+       if (!leave) {
+         return res.status(404).json({ message: 'Leave request not found' });
+       }
+
+       console.log("leave--", leave);
+       console.log("req.user--", req.user); // Fixed: Log req.user, not req.params
+
+       // Check if user is authenticated (req.user should be set by authMiddleware)
+       if (!req.user || !req.user.userId) {
+         return res.status(401).json({ message: 'User not authenticated' });
+       }
+
+       // Check if the user is authorized to update this leave
+       if (leave.employee.toString() !== req.user.userId) {
+         return res.status(403).json({ message: 'Not authorized to update this leave request' });
+       }
+
+       // Prevent updates if status is not 'Pending'
+       if (leave.status !== 'Pending') {
+         return res.status(400).json({ message: 'Cannot update leave request that is not pending' });
+       }
+
+       // Update the leave request
+       const updatedLeave = await Leave.findByIdAndUpdate(
+         id,
+         {
+           reason,
+           fromDate,
+           toDate,
+           contact,
+           leaveType
+         },
+         { new: true, runValidators: true }
+       );
+
+       res.json({ message: 'Leave request updated successfully', leave: updatedLeave });
+     } catch (error) {
+       console.error('Update leave error:', error);
+       res.status(500).json({ message: 'Server error', error: error.message });
+     }
+   };
+   
 
 exports.getLeaves = async (req, res) => {
   try {
@@ -120,30 +132,6 @@ exports.getLeaveById = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
-
-// exports.updateLeaveStatus = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { status } = req.body;
-
-//     if (!['Pending', 'Approved', 'Rejected'].includes(status)) {
-//       return res.status(400).json({ message: 'Invalid status value' });
-//     }
-
-//     const leave = await Leave.findByIdAndUpdate(id, { status }, { new: true });
-
-//     if (!leave) {
-//       return res.status(404).json({ message: 'Leave request not found' });
-//     }
-
-//     res.json({ message: 'Leave status updated', leave });
-//   } catch (error) {
-//     console.error('Update leave status error:', error);
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
-
 
 
 exports.updateLeaveStatus = async (req, res) => {
