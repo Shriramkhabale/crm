@@ -162,122 +162,157 @@ exports.registerSuperadmin = async (req, res) => {
 // };
 
 
+const SubscriptionPlan = require('../models/SubscriptionPlan');
+
+// Convert subscription duration string into days
+function getDaysFromDuration(duration) {
+  switch (duration) {
+    case "monthly": return 30;
+    case "quarterly": return 90;
+    case "yearly": return 365;
+    default: return 30;
+  }
+}
+
+// Check if company subscription is valid
+async function isSubscriptionActive(company) {
+  if (!company.businessSubscriptionPlan) return false;
+
+  const plan = await SubscriptionPlan.findById(company.businessSubscriptionPlan);
+  if (!plan) return false;
+
+  const days = getDaysFromDuration(plan.duration);
+
+  const startDate = new Date(company.businessCreatedDate);
+  const expiryDate = new Date(startDate);
+  expiryDate.setDate(expiryDate.getDate() + days);
+
+  return new Date() <= expiryDate;
+}
+
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check Superadmin
+    // ---------------- SUPERADMIN LOGIN ----------------
     let user = await Superadmin.findOne({ email });
     if (user) {
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
       const token = generateToken(user);
-
       return res.json({
-        message: 'Login successful',
+        message: "Login successful",
         token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          email: user.email,
-          role: user.role,
-          type: 'superadmin',
-          // Optionally add companyId if applicable, else null
-          companyId: null,
-        },
+        user: { id: user._id, email: user.email, role: "superadmin", type: "superadmin" }
       });
     }
 
-    // Check Employee
-    user = await Employee.findOne({ email });
-    if (user) {
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+    // ---------------- EMPLOYEE LOGIN ----------------
+    // ---------------- EMPLOYEE LOGIN ----------------
+user = await Employee.findOne({ email });
+if (user) {
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      const token = generateToken(user);
+  // Check if employee is active
+  if (user.isActive === false) {
+    return res.status(403).json({
+      message: "You are an inactive employee. Please contact your company administrator."
+    });
+  }
 
-      // Fetch companyId from employee document
-      const companyId = user.company ? user.company.toString() : null;
+  const company = await Company.findById(user.company);
+  if (!company) return res.status(400).json({ message: "Company not found" });
 
-      return res.json({
-        message: 'Login successful',
-        token,
-        user: {
-          id: user._id,
-          name: user.teamMemberName,
-          email: user.email,
-          role: user.role,
-          type: 'employee',
-          companyId,
-          accessPermissions: user.accessPermissions || [],  // include in response
+  const active = await isSubscriptionActive(company);
+  if (!active) {
+    return res.status(403).json({
+      message: "Your company's subscription plan has expired."
+    });
+  }
 
-        },
-      });
+  const token = generateToken(user);
+  return res.json({
+    message: "Login successful",
+    token,
+    user: {
+      id: user._id,
+      name: user.teamMemberName,
+      email: user.email,
+      role: user.role,
+      type: "employee",
+      companyId: company._id
     }
+  });
+}
 
-    // Check Company
+
+    // ---------------- COMPANY LOGIN ----------------
     user = await Company.findOne({ businessEmail: email });
     if (user) {
-      if (!user.password) return res.status(400).json({ message: 'Company user has no password set' });
-
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      const token = generateToken({ _id: user._id, role: 'company' });
+      const active = await isSubscriptionActive(user);
+      if (!active) {
+        return res.status(403).json({
+          message: "Your subscription plan has expired. Please renew."
+        });
+      }
 
-      // For company user, companyId is their own _id
-      const companyId = user._id.toString();
-
+      const token = generateToken({ _id: user._id, role: "company" });
       return res.json({
-        message: 'Login successful',
+        message: "Login successful",
         token,
         user: {
           id: user._id,
           businessName: user.businessName,
           email: user.businessEmail,
-          role: 'company',
-          type: 'company',
-          companyId,
-          accessPermissions: user.accessPermissions || [],  // include in response
-
-        },
+          role: "company",
+          type: "company"
+        }
       });
     }
 
-    // Check Branch
-    user = await Branch.findOne({ email: email });
+    // ---------------- BRANCH LOGIN ----------------
+    user = await Branch.findOne({ email });
     if (user) {
-      if (!user.password) return res.status(400).json({ message: 'Branch user has no password set' });
-
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      const token = generateToken({ _id: user._id, role: 'branch' });
+      const company = await Company.findById(user.company);
+      if (!company) return res.status(400).json({ message: "Company not found" });
 
-      // Fetch companyId from branch document
-      const companyId = user.company ? user.company.toString() : null;
+      const active = await isSubscriptionActive(company);
+      if (!active) {
+        return res.status(403).json({
+          message: "Main company subscription plan has expired."
+        });
+      }
 
+      const token = generateToken({ _id: user._id, role: "branch" });
       return res.json({
-        message: 'Login successful',
+        message: "Login successful",
         token,
         user: {
           id: user._id,
           email: user.email,
-          role: 'branch',
-          type: 'branch',
-          companyId,
-          accessPermissions: user.accessPermissions || [],  // include in response
-
-        },
+          role: "branch",
+          type: "branch",
+          companyId: company._id
+        }
       });
     }
 
-    return res.status(400).json({ message: 'Invalid email or password' });
+    return res.status(400).json({ message: "Invalid email or password" });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    console.error("Login Error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // Update Superadmin Profile
 exports.updateSuperadmin = async (req, res) => {
