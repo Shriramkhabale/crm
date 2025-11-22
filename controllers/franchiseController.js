@@ -41,7 +41,9 @@ exports.createFranchiseWithLogo = async (req, res) => {
       address,
       userlimit,
       planPrice,
-      duration
+      duration,
+      startDate,
+      endDate
     } = req.body;
 
     const existing = await Franchise.findOne({ franchiseEmail });
@@ -60,6 +62,8 @@ exports.createFranchiseWithLogo = async (req, res) => {
       userlimit,
       planPrice,
       duration,
+      startDate,
+      endDate,
       franchiseLogo
     });
 

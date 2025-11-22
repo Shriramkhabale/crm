@@ -1,4 +1,3 @@
-//controllers/authController.js
 const Superadmin = require('../models/User');
 const Employee = require('../models/Employee');
 const Company = require('../models/Company');
@@ -8,20 +7,18 @@ const bcrypt = require('bcryptjs');
 const generateToken = require('../utils/generateToken');
 const jwt = require('jsonwebtoken');  // Assuming installed
 
-
 const Branch = require('../models/Branch');
 
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
-
 
 // Register Superadmin
 exports.registerSuperadmin = async (req, res) => {
   const { firstName, phoneNumber, email, password } = req.body;
 
   try {
-    const existingUser  = await Superadmin.findOne({ email });
-    if (existingUser ) {
+    const existingUser = await Superadmin.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ message: 'Superadmin already exists' });
     }
 
@@ -161,33 +158,67 @@ exports.registerSuperadmin = async (req, res) => {
 //   }
 // };
 
-
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 
-// Convert subscription duration string into days
-function getDaysFromDuration(duration) {
-  switch (duration) {
-    case "monthly": return 30;
-    case "quarterly": return 90;
-    case "yearly": return 365;
-    default: return 30;
-  }
-}
-
-// Check if company subscription is valid
+// Updated: Check if company subscription is active, prioritizing endDate if available
+// Updated: Check if company subscription is active, handling JSON strings and prioritizing endDate
 async function isSubscriptionActive(company) {
   if (!company.businessSubscriptionPlan) return false;
 
-  const plan = await SubscriptionPlan.findById(company.businessSubscriptionPlan);
-  if (!plan) return false;
+  let planData = company.businessSubscriptionPlan;
+  let parsedPlan = null;
 
-  const days = getDaysFromDuration(plan.duration);
+  // Step 1: If planData is a string, try to parse it as JSON (for stored plan objects)
+  if (typeof planData === 'string') {
+    try {
+      parsedPlan = JSON.parse(planData);
+      console.log("Parsed plan from JSON string:", parsedPlan);
+    } catch (e) {
+      // If parsing fails, assume it's an ObjectId string and fetch from DB
+      console.log("Plan data is not JSON, treating as ObjectId:", planData);
+      const plan = await SubscriptionPlan.findById(planData);
+      if (!plan) return false;
+      parsedPlan = plan;
+    }
+  } else {
+    // If it's already an object (unlikely in your current setup, but for safety)
+    parsedPlan = planData;
+  }
 
-  const startDate = new Date(company.businessCreatedDate);
-  const expiryDate = new Date(startDate);
-  expiryDate.setDate(expiryDate.getDate() + days);
+  // Step 2: Check for explicit endDate (e.g., from manual plans)
+  if (parsedPlan && parsedPlan.endDate) {
+    const endDate = new Date(parsedPlan.endDate);
+    const isActive = new Date() <= endDate;
+    console.log(`Checking endDate: ${endDate} - Active: ${isActive}`);
+    return isActive;
+  }
 
-  return new Date() <= expiryDate;
+  // Step 3: Fallback to duration-based calculation
+  if (parsedPlan && parsedPlan.duration) {
+    const duration = parsedPlan.duration.toLowerCase();
+    const days = getDaysFromDuration(duration);
+    const startDate = new Date(company.businessCreatedDate || parsedPlan.startDate || new Date());
+    const expiryDate = new Date(startDate);
+    expiryDate.setDate(expiryDate.getDate() + days);
+    const isActive = new Date() <= expiryDate;
+    console.log(`Checking duration (${duration}): Start ${startDate}, Expiry ${expiryDate} - Active: ${isActive}`);
+    return isActive;
+  }
+
+  // If no valid plan data, consider inactive
+  console.log("No valid endDate or duration found in plan");
+  return false;
+}
+
+
+// Convert subscription duration string into days
+function getDaysFromDuration(duration) {
+  switch (duration.toLowerCase()) {
+    case "monthly": return 30;
+    case "quarterly": return 90;
+    case "yearly": return 365;
+    default: return 30;  // Default to 30 days
+  }
 }
 
 exports.login = async (req, res) => {
@@ -209,44 +240,42 @@ exports.login = async (req, res) => {
     }
 
     // ---------------- EMPLOYEE LOGIN ----------------
-    // ---------------- EMPLOYEE LOGIN ----------------
-user = await Employee.findOne({ email });
-if (user) {
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
+    user = await Employee.findOne({ email });
+    if (user) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-  // Check if employee is active
-  if (user.isActive === false) {
-    return res.status(403).json({
-      message: "You are an inactive employee. Please contact your company administrator."
-    });
-  }
+      // Check if employee is active
+      if (user.isActive === false) {
+        return res.status(403).json({
+          message: "You are an inactive employee. Please contact your company administrator."
+        });
+      }
 
-  const company = await Company.findById(user.company);
-  if (!company) return res.status(400).json({ message: "Company not found" });
+      const company = await Company.findById(user.company);
+      if (!company) return res.status(400).json({ message: "Company not found" });
 
-  const active = await isSubscriptionActive(company);
-  if (!active) {
-    return res.status(403).json({
-      message: "Your company's subscription plan has expired."
-    });
-  }
+      const active = await isSubscriptionActive(company);
+      if (!active) {
+        return res.status(403).json({
+          message: "Your company's subscription plan has expired."
+        });
+      }
 
-  const token = generateToken(user);
-  return res.json({
-    message: "Login successful",
-    token,
-    user: {
-      id: user._id,
-      name: user.teamMemberName,
-      email: user.email,
-      role: user.role,
-      type: "employee",
-      companyId: company._id
+      const token = generateToken(user);
+      return res.json({
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          name: user.teamMemberName,
+          email: user.email,
+          role: user.role,
+          type: "employee",
+          companyId: company._id
+        }
+      });
     }
-  });
-}
-
 
     // ---------------- COMPANY LOGIN ----------------
     user = await Company.findOne({ businessEmail: email });
@@ -305,6 +334,27 @@ if (user) {
       });
     }
 
+    // ---------------- FRANCHISE LOGIN ----------------
+    user = await Franchise.findOne({ franchiseEmail: email });
+    if (user) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
+
+      const token = generateToken({ _id: user._id, role: "franchise" });
+      return res.json({
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          franchiseName: user.franchiseName,
+          email: user.franchiseEmail,
+          phone: user.franchisePhone,
+          role: "franchise",
+          type: "franchise"
+        }
+      });
+    }
+
     return res.status(400).json({ message: "Invalid email or password" });
 
   } catch (error) {
@@ -313,7 +363,6 @@ if (user) {
   }
 };
 
-
 // Update Superadmin Profile
 exports.updateSuperadmin = async (req, res) => {
   const { id } = req.params;
@@ -321,7 +370,7 @@ exports.updateSuperadmin = async (req, res) => {
 
   try {
     const user = await Superadmin.findById(id);
-    if (!user) return res.status(404).json({ message: 'User  not found' });
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (firstName) user.firstName = firstName;
     if (phoneNumber) user.phoneNumber = phoneNumber;
@@ -334,18 +383,17 @@ exports.updateSuperadmin = async (req, res) => {
 
     await user.save();
 
-    res.json({ message: 'User  updated successfully', user });
+    res.json({ message: 'User updated successfully', user });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-
-//fetch superadmin data
+// Fetch superadmin data
 exports.getSuperadmin = async (req, res) => {
   try {
-    console.log("req",req.user);
-    
+    console.log("req", req.user);
+
     // Fetch the superadmin by ID from req.user (set by protect middleware)
     const user = await Superadmin.findById(req.user.id).select('-password'); // Exclude password hash for security
     if (!user) {
@@ -412,8 +460,6 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-
-
 // Reset Password
 exports.resetPassword = async (req, res) => {
   const { token, newPassword } = req.body;
@@ -434,7 +480,7 @@ exports.resetPassword = async (req, res) => {
     }
     // Update password
     user.password = newPassword;  // Hashed by pre-save
-    user.resetPasswordToken = undefined;
+    user.resetPasswordToken = undefined;  // Fixed: Clear the token
     user.resetPasswordExpires = undefined;
     await user.save();
     res.json({ message: 'Password reset successfully' });

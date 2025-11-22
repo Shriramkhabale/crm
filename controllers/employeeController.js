@@ -253,7 +253,7 @@ exports.createEmployee = async (req, res) => {
     employee.password = undefined;
     res.status(201).json({ message: 'Employee created', employee });
   } catch (error) {
-    console.error('❌ CREATE ERROR:', error.message);
+    console.error('❌ CREATE ERROR:', error.message)
     console.error('❌ Full error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }

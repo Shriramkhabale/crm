@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+
 const franchiseSchema = new mongoose.Schema({
   superadmin: {
     type: mongoose.Schema.Types.ObjectId,
@@ -14,6 +16,8 @@ const franchiseSchema = new mongoose.Schema({
   userlimit: { type: String },
   planPrice: { type: String },
   duration: { type: String },
+  startDate: { type: String },
+  endDate: { type: String },
   franchiseLogo: { type: String },  
   // New fields for password reset
   resetPasswordToken: {

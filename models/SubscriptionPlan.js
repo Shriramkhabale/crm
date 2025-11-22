@@ -18,7 +18,7 @@ const subscriptionPlanSchema = new mongoose.Schema({
   },
   duration: {
     type: String,
-    enum: ['monthly', 'quarterly', 'yearly'], // example durations
+    enum: ['7-day', '15-day', 'monthly', 'quarterly', 'yearly', '2-year'],
     required: true,
   },
   price: {

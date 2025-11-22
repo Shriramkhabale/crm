@@ -16,10 +16,12 @@ exports.createPlan = async (req, res) => {
       return res.status(400).json({ message: 'Title, duration, and price are required' });
     }
 
-    // Validate duration
-    const validDurations = ['monthly', 'quarterly', 'yearly'];
+    // Validate duration with new options
+    const validDurations = ['7-day', '15-day', 'monthly', 'quarterly', 'yearly', '2-year'];
     if (!validDurations.includes(duration)) {
-      return res.status(400).json({ message: `Duration must be one of ${validDurations.join(', ')}` });
+      return res.status(400).json({ 
+        message: `Duration must be one of: ${validDurations.join(', ')}` 
+      });
     }
 
     const plan = new SubscriptionPlan({
@@ -49,7 +51,11 @@ exports.createPlan = async (req, res) => {
 // Get all subscription plans
 exports.getAllPlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find().sort({ createdAt: -1 });
+    const plans = await SubscriptionPlan.find().sort({ 
+      // Custom sorting: trial plans first, then by duration
+      price: 1,
+      createdAt: -1 
+    });
     res.json({ plans });
   } catch (error) {
     console.error('Get subscription plans error:', error);
@@ -79,9 +85,11 @@ exports.updatePlan = async (req, res) => {
     const updateData = req.body;
 
     if (updateData.duration) {
-      const validDurations = ['monthly', 'quarterly', 'yearly'];
+      const validDurations = ['7-day', '15-day', 'monthly', 'quarterly', 'yearly', '2-year'];
       if (!validDurations.includes(updateData.duration)) {
-        return res.status(400).json({ message: `Duration must be one of ${validDurations.join(', ')}` });
+        return res.status(400).json({ 
+          message: `Duration must be one of: ${validDurations.join(', ')}` 
+        });
       }
     }
 
@@ -121,4 +129,17 @@ exports.deletePlan = async (req, res) => {
     console.error('Delete subscription plan error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
+};
+
+// Helper function to calculate plan duration in days (optional)
+exports.calculateDurationInDays = (duration) => {
+  const durationMap = {
+    '7-day': 7,
+    '15-day': 15,
+    'monthly': 30,
+    'quarterly': 90,
+    'yearly': 365,
+    '2-year': 730
+  };
+  return durationMap[duration] || 0;
 };
