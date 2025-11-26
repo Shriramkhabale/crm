@@ -6,21 +6,21 @@ const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/multerCloudinary');
 
 // ✅ CREATE milestone - accept any file fields
-router.post('/', 
-  authMiddleware, 
+router.post('/',
+  authMiddleware,
   upload.any(),
   milestoneController.createMilestone
 );
 
 // ✅ UPDATE milestone - accept any file fields
-router.put('/:id', 
+router.put('/:id',
   authMiddleware,
   upload.any(),
   milestoneController.updateMilestone
 );
 
 // ✅ ADD THIS NEW ROUTE - Upload attachments to existing milestone
-router.post('/:id/attachments', 
+router.post('/:id/attachments',
   authMiddleware,
   upload.any(),
   milestoneController.uploadAttachments

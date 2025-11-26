@@ -11,25 +11,30 @@ const milestoneSchema = new mongoose.Schema({
   description: [{ type: String }],
   dueDate: { type: Date, required: true },
   status: { type: String },
-  
+
   statusHistory: [{
     status: { type: String, required: true },
     description: [{ type: String }],
     updatedAt: { type: Date, default: Date.now },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    // ✅ ADDED: File fields for history tracking
+    images: [{ type: String }],
+    audios: [{ type: String }],
+    files: [{ type: String }],
+    attachmentUrls: [{ type: String }]
   }],
-  
+
   assignedTeamMember: [
     { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }
   ],
   nextFollowUp: { type: Date },
-  
+
   // ✅ ADD THESE FIELDS FOR MEDIA/FILES
   images: [{ type: String }],        // Array of image URLs
   audios: [{ type: String }],        // Array of audio URLs  
   files: [{ type: String }],         // Array of file URLs
   attachmentUrls: [{ type: String }], // Alternative field for attachments
-  
+
   company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true }
 }, { timestamps: true });
 

@@ -51,21 +51,24 @@ exports.createMilestone = async (req, res) => {
 
     console.log('📝 Initial description array:', descriptionArray);
 
+    // ✅ HANDLE FILE UPLOADS (same as task controller)
+    const images = req.files?.images ? req.files.images.map(f => f.path || f.secure_url) : [];
+    const audios = req.files?.audios ? req.files.audios.map(f => f.path || f.secure_url) : [];
+    const files = req.files?.files ? req.files.files.map(f => f.path || f.secure_url) : [];
+
+    console.log('📎 Processed files:', { images, audios, files });
+
     // ✅ Create initial status history entry
     const initialStatus = status || 'Pending';
     const statusHistory = [{
       status: initialStatus,
       description: descriptionArray,
       updatedAt: new Date(),
-      updatedBy: req.user.userId
+      updatedBy: req.user.userId,
+      images,
+      audios,
+      files
     }];
-
-     // ✅ HANDLE FILE UPLOADS (same as task controller)
-    const images = req.files?.images ? req.files.images.map(f => f.path || f.secure_url) : [];
-    const audios = req.files?.audios ? req.files.audios.map(f => f.path || f.secure_url) : [];
-    const files = req.files?.files ? req.files.files.map(f => f.path || f.secure_url) : [];
-
-    console.log('📎 Processed files:', { images, audios, files });
 
     const milestone = new Milestone({
       title,
@@ -84,10 +87,6 @@ exports.createMilestone = async (req, res) => {
     });
 
     await milestone.save();
-
-
-
-    
 
     console.log('✅ Milestone created:', {
       id: milestone._id,
@@ -110,10 +109,6 @@ exports.createMilestone = async (req, res) => {
 // controllers/milestoneController.js - ADD THIS NEW FUNCTION
 
 // ✅ UPLOAD ATTACHMENTS TO EXISTING MILESTONE
-// controllers/milestoneController.js - FIXED uploadAttachments (NO DUPLICATES)
-
-// controllers/milestoneController.js - FIXED uploadAttachments
-
 exports.uploadAttachments = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser(req.user);
@@ -126,14 +121,22 @@ exports.uploadAttachments = async (req, res) => {
       return res.status(404).json({ message: 'Milestone not found' });
     }
 
+    // ✅ Handle file uploads from req.files (multer)
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
       console.log('📎 Processing uploaded files:', req.files.length);
-      
+
       req.files.forEach(file => {
         const fileUrl = file.path || file.secure_url || file.location;
         if (!fileUrl) return;
 
-        // ✅ ONLY add to specific array based on type (NO attachmentUrls)
+        console.log('📎 File details:', {
+          fieldname: file.fieldname,
+          mimetype: file.mimetype,
+          originalname: file.originalname,
+          url: fileUrl
+        });
+
+        // Categorize by mimetype or fieldname
         if (file.mimetype?.startsWith('image/') || file.fieldname === 'images') {
           if (!Array.isArray(milestone.images)) milestone.images = [];
           milestone.images.push(fileUrl);
@@ -141,15 +144,21 @@ exports.uploadAttachments = async (req, res) => {
           if (!Array.isArray(milestone.audios)) milestone.audios = [];
           milestone.audios.push(fileUrl);
         } else {
+          // Default to files array for PDFs, docs, etc.
           if (!Array.isArray(milestone.files)) milestone.files = [];
           milestone.files.push(fileUrl);
         }
+
+        // Also add to attachmentUrls for compatibility
+        if (!Array.isArray(milestone.attachmentUrls)) milestone.attachmentUrls = [];
+        milestone.attachmentUrls.push(fileUrl);
       });
-      
-      console.log('✅ Files processed:', {
+
+      console.log('✅ Files processed and added:', {
         images: milestone.images?.length || 0,
         audios: milestone.audios?.length || 0,
-        files: milestone.files?.length || 0
+        files: milestone.files?.length || 0,
+        attachmentUrls: milestone.attachmentUrls?.length || 0
       });
     } else {
       return res.status(400).json({ message: 'No files uploaded' });
@@ -157,13 +166,22 @@ exports.uploadAttachments = async (req, res) => {
 
     await milestone.save();
 
+    console.log('✅ Attachments uploaded successfully to milestone:', {
+      id: milestone._id,
+      totalImages: milestone.images?.length || 0,
+      totalAudios: milestone.audios?.length || 0,
+      totalFiles: milestone.files?.length || 0,
+      totalAttachments: milestone.attachmentUrls?.length || 0
+    });
+
+    // Populate for response
     const populatedMilestone = await Milestone.findById(milestone._id)
       .populate('project', 'title status')
       .populate('assignedTeamMember', 'teamMemberName email')
       .populate('statusHistory.updatedBy', 'teamMemberName email');
 
-    res.json({ 
-      message: 'Attachments uploaded successfully', 
+    res.json({
+      message: 'Attachments uploaded successfully',
       milestone: populatedMilestone,
       uploadedCount: req.files.length
     });
@@ -226,7 +244,7 @@ exports.updateMilestone = async (req, res) => {
     // ✅ Handle description update
     if (updates.description !== undefined) {
       let newDescriptions = [];
-      
+
       if (Array.isArray(updates.description)) {
         newDescriptions = updates.description.filter(d => d && typeof d === 'string' && d.trim());
       } else if (typeof updates.description === 'string' && updates.description.trim()) {
@@ -249,7 +267,7 @@ exports.updateMilestone = async (req, res) => {
     // ✅ Handle statusNote
     if (updates.statusNote !== undefined && !updates.description) {
       let newNotes = [];
-      
+
       if (Array.isArray(updates.statusNote)) {
         newNotes = updates.statusNote.filter(d => d && typeof d === 'string' && d.trim());
       } else if (typeof updates.statusNote === 'string' && updates.statusNote.trim()) {
@@ -269,7 +287,7 @@ exports.updateMilestone = async (req, res) => {
     // ✅ Handle notes field
     if (updates.notes !== undefined && !updates.description && !updates.statusNote) {
       let newNotes = [];
-      
+
       if (Array.isArray(updates.notes)) {
         newNotes = updates.notes.filter(d => d && typeof d === 'string' && d.trim());
       } else if (typeof updates.notes === 'string' && updates.notes.trim()) {
@@ -304,7 +322,7 @@ exports.updateMilestone = async (req, res) => {
       if (updates.assignedTeamMember && updates.assignedTeamMember.length > 0) {
         const currentProject = updates.project || milestone.project;
         const proj = await ProjectMgnt.findById(currentProject).select('teamMembers');
-        
+
         const invalidMembers = updates.assignedTeamMember.filter(m => !proj.teamMembers.includes(m));
         if (invalidMembers.length > 0) {
           return res.status(400).json({ message: 'All assigned members must be part of the project team' });
@@ -320,7 +338,7 @@ exports.updateMilestone = async (req, res) => {
     // ✅ Handle file uploads from req.files (multer)
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
       console.log('📎 Processing uploaded files:', req.files.length);
-      
+
       req.files.forEach(file => {
         const fileUrl = file.path || file.secure_url || file.location;
         if (!fileUrl) return;
@@ -329,16 +347,33 @@ exports.updateMilestone = async (req, res) => {
         if (file.mimetype?.startsWith('image/') || file.fieldname === 'images') {
           if (!Array.isArray(milestone.images)) milestone.images = [];
           milestone.images.push(fileUrl);
+
+          // Add to history
+          if (!newHistoryEntry.images) newHistoryEntry.images = [];
+          newHistoryEntry.images.push(fileUrl);
+          shouldAddHistory = true;
+
         } else if (file.mimetype?.startsWith('audio/') || file.fieldname === 'audios') {
           if (!Array.isArray(milestone.audios)) milestone.audios = [];
           milestone.audios.push(fileUrl);
+
+          // Add to history
+          if (!newHistoryEntry.audios) newHistoryEntry.audios = [];
+          newHistoryEntry.audios.push(fileUrl);
+          shouldAddHistory = true;
+
         } else {
           // Default to files array
           if (!Array.isArray(milestone.files)) milestone.files = [];
           milestone.files.push(fileUrl);
+
+          // Add to history
+          if (!newHistoryEntry.files) newHistoryEntry.files = [];
+          newHistoryEntry.files.push(fileUrl);
+          shouldAddHistory = true;
         }
       });
-      
+
       console.log('✅ Files processed:', {
         images: milestone.images?.length || 0,
         audios: milestone.audios?.length || 0,

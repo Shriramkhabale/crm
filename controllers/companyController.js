@@ -1,4 +1,5 @@
 const Company = require('../models/Company');
+const Franchise = require('../models/Franchise');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 
@@ -17,7 +18,7 @@ exports.createCompanyWithLogo = async (req, res) => {
       franchise
     } = req.body;
 
- // UPDATED: Parse weeklyHoliday from JSON string to array
+    // UPDATED: Parse weeklyHoliday from JSON string to array
     let weeklyHolidayArr;
     try {
       weeklyHolidayArr = weeklyHoliday ? JSON.parse(weeklyHoliday) : ['Sunday']; // Default if empty
@@ -31,8 +32,20 @@ exports.createCompanyWithLogo = async (req, res) => {
 
     const businessLogo = req.file ? req.file.path : undefined;
 
+    // Determine superadmin ID
+    let superadminId;
+    if (req.user.role === 'franchise') {
+      const franchiseUser = await Franchise.findById(req.user.id);
+      if (!franchiseUser) {
+        return res.status(404).json({ message: 'Franchise user not found' });
+      }
+      superadminId = franchiseUser.superadmin;
+    } else {
+      superadminId = req.user.id;
+    }
+
     const company = new Company({
-      superadmin: req.user.id,
+      superadmin: superadminId,
       franchise,
       businessName,
       businessEmail,
@@ -56,7 +69,7 @@ exports.createCompanyWithLogo = async (req, res) => {
 
 exports.getCompanies = async (req, res) => {
   try {
-    const companies = await Company.find({ superadmin: req.user.id }); 
+    const companies = await Company.find({ superadmin: req.user.id });
     res.json(companies);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
@@ -76,6 +89,21 @@ exports.getCompanyById = async (req, res) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
+
+exports.getCompaniesByFranchise = async (req, res) => {
+  try {
+    const { franchiseId } = req.params;
+
+    // Find all companies where franchise field matches the franchiseId
+    const companies = await Company.find({ franchise: franchiseId });
+
+    res.json({ companies });
+  } catch (error) {
+    console.error('Error fetching companies by franchise:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 
 exports.updateCompanyWithLogo = async (req, res) => {
   try {
@@ -113,7 +141,7 @@ exports.updateCompanyWithLogo = async (req, res) => {
     }
 
 
-       // UPDATED: Parse weeklyHoliday if present
+    // UPDATED: Parse weeklyHoliday if present
     if (updateData.weeklyHoliday) {
       try {
         updateData.weeklyHoliday = JSON.parse(updateData.weeklyHoliday);
@@ -189,7 +217,7 @@ exports.createBranchWithLogo = async (req, res) => {
       return res.status(400).json({ message: 'Branch email already exists' });
     }
 
-     // UPDATED: Parse weeklyHoliday from JSON string to array
+    // UPDATED: Parse weeklyHoliday from JSON string to array
     let weeklyHolidayArr;
     try {
       weeklyHolidayArr = weeklyHoliday ? JSON.parse(weeklyHoliday) : ['Sunday'];
@@ -257,7 +285,7 @@ exports.updateBranchWithLogo = async (req, res) => {
     if (req.file) {
       updateData.businessLogo = req.file.path;
     }
- // UPDATED: Parse weeklyHoliday if present
+    // UPDATED: Parse weeklyHoliday if present
     if (updateData.weeklyHoliday) {
       try {
         updateData.weeklyHoliday = JSON.parse(updateData.weeklyHoliday);

@@ -15,6 +15,7 @@ router.post(
 );
 
 router.get('/', companyController.getCompanies);
+router.get('/franchise/:franchiseId', companyController.getCompaniesByFranchise);
 router.get('/:id', companyController.getCompanyById);
 // router.put('/:id', companyController.updateCompany);
 router.put(
