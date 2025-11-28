@@ -344,7 +344,7 @@ async function generateNextInstance(
     999
   );
 
- // Generate taskId BEFORE creating the instance
+  // Generate taskId BEFORE creating the instance
   const nextSeq = await getNextSequenceValue(companyId, "taskid");
   const instance = new Task({
     taskId: `T${nextSeq}`,  // Now nextSeq is defined
@@ -446,7 +446,7 @@ async function createInstance(
 
     const shiftMsg = isHoliday(instanceDate, holidays) ? "shifted " : "";
 
-  const nextSeq = await getNextSequenceValue(companyObjId.toString(), "taskid");
+    const nextSeq = await getNextSequenceValue(companyObjId.toString(), "taskid");
     const instance = new Task({
       taskId: `T${nextSeq}`,  // Set taskId here
       title: parentTaskData.title,
@@ -718,14 +718,36 @@ exports.createTask = async (req, res) => {
     }
 
     // Files from multer (unchanged)
-    const images = req.files?.images ? req.files.images.map((f) => f.path) : [];
-    const audios = req.files?.audios ? req.files.audios.map((f) => f.path) : [];
-    const files = req.files?.files ? req.files.files.map((f) => f.path) : [];
+    // Save images, audios, files as objects with metadata
+    const images = req.files?.images
+      ? req.files.images.map((f) => ({
+        url: f.path || f.secure_url,
+        name: f.originalname || '',
+        type: f.mimetype || 'image',
+        size: f.size || 0
+      }))
+      : [];
+    const audios = req.files?.audios
+      ? req.files.audios.map((f) => ({
+        url: f.path || f.secure_url,
+        name: f.originalname || '',
+        type: f.mimetype || 'audio',
+        size: f.size || 0
+      }))
+      : [];
+    const files = req.files?.files
+      ? req.files.files.map((f) => ({
+        url: f.path || f.secure_url,
+        name: f.originalname || '',
+        type: f.mimetype || 'file',
+        size: f.size || 0
+      }))
+      : [];
 
-  
+
     // Updated: Generate and assign taskId per company after saving
     // if (!task.repeat) {
-      const nextSeq = await getNextSequenceValue(company, "taskid");
+    const nextSeq = await getNextSequenceValue(company, "taskid");
 
     const taskData = {
       taskId: `T${nextSeq}`,  // Always set taskId here
@@ -753,7 +775,7 @@ exports.createTask = async (req, res) => {
       recurrenceActive: repeat ? true : false,
     };
     const task = new Task(taskData);
-    await task.save(); 
+    await task.save();
     // }
 
     let firstInstance = null;
@@ -775,7 +797,7 @@ exports.createTask = async (req, res) => {
       if (
         dueForStart &&
         dueForStart.toISOString().split("T")[0] ===
-          startDateOnly.toISOString().split("T")[0] &&
+        startDateOnly.toISOString().split("T")[0] &&
         startDateOnly >= today
       ) {
         firstInstance = await generateNextInstance(
@@ -786,8 +808,7 @@ exports.createTask = async (req, res) => {
         );
         if (firstInstance) {
           console.log(
-            `✅ First instance generated on create for start date ${
-              startDateOnly.toISOString().split("T")[0]
+            `✅ First instance generated on create for start date ${startDateOnly.toISOString().split("T")[0]
             }: ${firstInstance.startDateTime.toISOString()}`
           );
         } else {
@@ -797,16 +818,14 @@ exports.createTask = async (req, res) => {
         }
       } else {
         console.log(
-          `Start date ${
-            startDateOnly.toISOString().split("T")[0]
+          `Start date ${startDateOnly.toISOString().split("T")[0]
           } doesn't match pattern or is in past - first instance will generate on next list call`
         );
       }
     }
 
     console.log(
-      `Task created: ${
-        task.repeat ? "Recurring parent" : "One-time task"
+      `Task created: ${task.repeat ? "Recurring parent" : "One-time task"
       } with ID ${task._id}, repeat: ${task.repeat}`
     );
 

@@ -6,15 +6,15 @@ const Employee = require('../models/Employee');
 const mongoose = require('mongoose');
 
 
-async function getCompanyIdFromUser (user) {
+async function getCompanyIdFromUser(user) {
   if (user.role === 'company') {
     return user.userId; // userId is companyId
-  } else{
+  } else {
     // Find employee by userId and get companyId
     const employee = await Employee.findById(user.userId).select('company');
     if (!employee) throw new Error('Employee not found');
     return employee.company.toString();
-  } 
+  }
 }
 
 
@@ -51,7 +51,7 @@ async function getCompanyIdFromUser (user) {
 //     // Update task status and nextFollowUpDateTime
 //     task.status = status;
 //      task.nextFollowUpDateTime = nextFollowUpDateTime;
-  
+
 //     await task.save();
 
 //     // Save status update history
@@ -134,7 +134,7 @@ exports.getShiftedTasks = async (req, res) => {
 exports.getReassignedTasksForCompany = async (req, res) => {
   try {
     // Get company ID from logged-in user
-    const companyId = await getCompanyIdFromUser  (req.user);
+    const companyId = await getCompanyIdFromUser(req.user);
     if (!companyId) {
       return res.status(400).json({ message: 'Company ID not found for user' });
     }
@@ -183,7 +183,7 @@ exports.getReassignedTasksForCompany = async (req, res) => {
 
     const countResult = await TaskStatusUpdate.aggregate(countPipeline);
     console.log("countResult", countResult);
-    
+
     const totalCount = countResult.length > 0 ? countResult[0].totalCount : 0;
     console.log(`Total reassigned tasks for company ${companyId}: ${totalCount}`);
 
@@ -239,15 +239,15 @@ exports.getReassignedTasksForCompany = async (req, res) => {
                 _id: { $exists: true, $ne: null } // Only ensure valid document, no company filter
               }
             },
-            { 
-              $project: { 
-                firstName: 1, 
-                lastName: 1, 
-                email: 1, 
-                role: 1, 
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1,
+                role: 1,
                 teamMemberName: 1,
-                _id: 1 
-              } 
+                _id: 1
+              }
             }
           ]
         }
@@ -263,9 +263,9 @@ exports.getReassignedTasksForCompany = async (req, res) => {
                 '$shiftedByDetails.teamMemberName',
                 {
                   $cond: {
-                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    if: { $eq: [{ $toString: '$shiftedBy' }, companyId] },
                     then: 'Company Admin',
-                    else: { $concat: [ 'Unknown Shifter (ID: ', { $toString: '$shiftedBy' }, ')' ] }
+                    else: { $concat: ['Unknown Shifter (ID: ', { $toString: '$shiftedBy' }, ')'] }
                   }
                 }
               ]
@@ -275,7 +275,7 @@ exports.getReassignedTasksForCompany = async (req, res) => {
                 '$shiftedByDetails.firstName',
                 {
                   $cond: {
-                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    if: { $eq: [{ $toString: '$shiftedBy' }, companyId] },
                     then: 'Company',
                     else: null
                   }
@@ -287,20 +287,20 @@ exports.getReassignedTasksForCompany = async (req, res) => {
                 '$shiftedByDetails.lastName',
                 {
                   $cond: {
-                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    if: { $eq: [{ $toString: '$shiftedBy' }, companyId] },
                     then: 'Admin',
                     else: null
                   }
                 }
               ]
             },
-            email: { $ifNull: [ '$shiftedByDetails.email', null ] },
+            email: { $ifNull: ['$shiftedByDetails.email', null] },
             role: {
               $ifNull: [
                 '$shiftedByDetails.role',
                 {
                   $cond: {
-                    if: { $eq: [ { $toString: '$shiftedBy' }, companyId ] },
+                    if: { $eq: [{ $toString: '$shiftedBy' }, companyId] },
                     then: 'Company',
                     else: 'Unknown'
                   }
@@ -323,15 +323,15 @@ exports.getReassignedTasksForCompany = async (req, res) => {
                 _id: { $exists: true, $ne: null } // No company filter
               }
             },
-            { 
-              $project: { 
-                firstName: 1, 
-                lastName: 1, 
-                email: 1, 
-                role: 1, 
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1,
+                role: 1,
                 teamMemberName: 1,
-                _id: 1 
-              } 
+                _id: 1
+              }
             }
           ]
         }
@@ -345,13 +345,13 @@ exports.getReassignedTasksForCompany = async (req, res) => {
             teamMemberName: {
               $ifNull: [
                 '$oldAssigneeDetails.teamMemberName',
-                { $concat: [ 'Unknown Assignee (ID: ', { $toString: '$oldAssigneeId' }, ')' ] }
+                { $concat: ['Unknown Assignee (ID: ', { $toString: '$oldAssigneeId' }, ')'] }
               ]
             },
-            firstName: { $ifNull: [ '$oldAssigneeDetails.firstName', null ] },
-            lastName: { $ifNull: [ '$oldAssigneeDetails.lastName', null ] },
-            email: { $ifNull: [ '$oldAssigneeDetails.email', null ] },
-            role: { $ifNull: [ '$oldAssigneeDetails.role', 'Unknown' ] }
+            firstName: { $ifNull: ['$oldAssigneeDetails.firstName', null] },
+            lastName: { $ifNull: ['$oldAssigneeDetails.lastName', null] },
+            email: { $ifNull: ['$oldAssigneeDetails.email', null] },
+            role: { $ifNull: ['$oldAssigneeDetails.role', 'Unknown'] }
           }
         }
       },
@@ -387,7 +387,7 @@ exports.getReassignedTasksForCompany = async (req, res) => {
     console.log("dataPipeline", dataPipeline); // Debug: Log pipeline for verification
 
     const dataResult = await TaskStatusUpdate.aggregate(dataPipeline);
-   
+
     // Handle large "all" results (optional warning)
     if (all && dataResult.length > 5000) {
       console.warn(`Large result set (${dataResult.length}) for "all" query – consider pagination for UI`);
@@ -406,10 +406,10 @@ exports.getReassignedTasksForCompany = async (req, res) => {
 
   } catch (error) {
     console.error('getReassignedTasksForCompany error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error', 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
     });
   }
 };
@@ -429,8 +429,8 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
     } = req.body;
 
 
-    console.log("req.body222",req.body);
-    
+    console.log("req.body222", req.body);
+
     if (!status) {
       return res.status(400).json({ message: 'Status is required' });
     }
@@ -457,8 +457,8 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
     // Update task status and nextFollowUpDateTime
     task.status = status;
     task.nextFollowUpDateTime = nextFollowUpDateTime;
-    console.log("task---0--0-0-000-",task);
-    
+    console.log("task---0--0-0-000-", task);
+
     await task.save();
 
     // Extract uploaded file URLs
@@ -466,7 +466,7 @@ exports.updateTaskStatusWithFiles = async (req, res) => {
     const file = req.files && req.files.file ? req.files.file[0].path : undefined;
     const audio = req.files && req.files.audio ? req.files.audio[0].path : undefined;
 
-console.log("followUpDate",nextFollowUpDateTime);
+    console.log("followUpDate", nextFollowUpDateTime);
 
     // Save status update history
     const statusUpdate = new TaskStatusUpdate({

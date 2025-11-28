@@ -2,6 +2,7 @@ const Superadmin = require('../models/User');
 const Employee = require('../models/Employee');
 const Company = require('../models/Company');
 const Franchise = require('../models/Franchise');  // Add this import
+const SuperEmployee = require('../models/SuperEmployee');
 
 const bcrypt = require('bcryptjs');
 const generateToken = require('../utils/generateToken');
@@ -46,121 +47,8 @@ exports.registerSuperadmin = async (req, res) => {
   }
 };
 
-// Unified Login for Superadmin, Employee, Company
-// exports.login = async (req, res) => {
-//   const { email, password } = req.body;
-
-//   try {
-//     // Check Superadmin
-//     let user = await Superadmin.findOne({ email });
-//     console.log("user1",user);
-    
-//     if (user) {
-//       const isMatch = await bcrypt.compare(password, user.password);
-//       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
-
-//       const token = generateToken(user);
-
-//       return res.json({
-//         message: 'Login successful',
-//         token,
-//         user: {
-//           id: user._id,
-//           firstName: user.firstName,
-//           email: user.email,
-//           role: user.role,
-//           type: 'superadmin',
-//         },
-//       });
-//     }
-
-//     // Check Employee
-//     user = await Employee.findOne({ email });
-    
-
-//     if (user) {
-//       console.log("user2",user);
-//       console.log("password",password);
-//       console.log("password",password);
-      
-//       const isMatch = await bcrypt.compare(password, user.password);
-//       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
-
-//       const token = generateToken(user);
-
-//       return res.json({
-//         message: 'Login successful',
-//         token,
-//         user: {
-//           id: user._id,
-//           name: user.teamMemberName,
-//           email: user.email,
-//           role: user.role,
-//           type: 'employee',
-//         },
-//       });
-//     }
-
-//     // Check Company
-//     user = await Company.findOne({ businessEmail: email });
-//     console.log("user23",user);
-
-//     if (user) {
-//       if (!user.password) return res.status(400).json({ message: 'Company user has no password set' });
-
-//       const isMatch = await bcrypt.compare(password, user.password);
-//       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
-
-//       const token = generateToken({ _id: user._id, role: 'company' });
-
-//       return res.json({
-//         message: 'Login successful',
-//         token,
-//         user: {
-//           id: user._id,
-//           businessName: user.businessName,
-//           email: user.businessEmail,
-//           role: 'company',
-//           type: 'company',
-//         },
-//       });
-//     }
-
-
-//        // Check Company
-//     user = await Branch.findOne({ email: email });
-//     console.log("user23",user);
-
-//     if (user) {
-//       if (!user.password) return res.status(400).json({ message: 'Company user has no password set' });
-
-//       const isMatch = await bcrypt.compare(password, user.password);
-//       if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
-
-//       const token = generateToken({ _id: user._id, role: 'company' });
-
-//       return res.json({
-//         message: 'Login successful',
-//         token,
-//         user: {
-//           id: user._id,
-//           email: user.email,
-//           email: user.email,
-//           role: 'company',
-//           type: 'company',
-//         },
-//       });
-//     }
-
-//     return res.status(400).json({ message: 'Invalid email or password' });
-//   } catch (error) {
-//     res.status(500).json({ message: 'Server error' });
-//   }
-// };
-
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 
-// Updated: Check if company subscription is active, prioritizing endDate if available
 // Updated: Check if company subscription is active, handling JSON strings and prioritizing endDate
 async function isSubscriptionActive(company) {
   if (!company.businessSubscriptionPlan) return false;
@@ -303,7 +191,53 @@ exports.login = async (req, res) => {
         }
       });
     }
+    // ---------------- SUPER EMPLOYEE LOGIN ----------------
+    user = await SuperEmployee.findOne({ email });
+    if (user) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
+      // Check if super employee is active
+      if (user.isActive === false) {
+        return res.status(403).json({
+          message: "Your account is inactive. Please contact your administrator."
+        });
+      }
+
+      // Check Franchise status if applicable
+      if (user.franchise) {
+        const franchise = await Franchise.findById(user.franchise);
+        if (!franchise) {
+          return res.status(400).json({ message: "Associated Franchise not found" });
+        }
+        // Optional: Check franchise subscription/status if needed
+        // if (!franchise.isActive) ... 
+      }
+
+      // FIXED: Include superadmin and franchise in the token
+      const token = generateToken({
+        _id: user._id,
+        role: user.role || 'super_employee',
+        accessPermissions: user.accessPermissions || [],
+        superadmin: user.superadmin,  // ✅ Added: Include superadmin ID in token
+        franchise: user.franchise      // ✅ Added: Include franchise ID in token
+      });
+
+      return res.json({
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          name: user.teamMemberName,
+          email: user.email,
+          role: user.role || 'super_employee',
+          type: "super_employee",
+          accessPermissions: user.accessPermissions || [],
+          superadmin: user.superadmin,
+          franchise: user.franchise
+        }
+      });
+    }
     // ---------------- BRANCH LOGIN ----------------
     user = await Branch.findOne({ email });
     if (user) {
@@ -430,9 +364,9 @@ exports.forgotPassword = async (req, res) => {
 
     // Search across all models
     user = await Superadmin.findOne({ email }) ||
-           await Employee.findOne({ email }) ||
-           await Company.findOne({ businessEmail: email }) ||
-           await Franchise.findOne({ franchiseEmail: email });
+      await Employee.findOne({ email }) ||
+      await Company.findOne({ businessEmail: email }) ||
+      await Franchise.findOne({ franchiseEmail: email });
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
