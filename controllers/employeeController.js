@@ -212,7 +212,20 @@ exports.createEmployee = async (req, res) => {
 
     // Coerce other arrays (unchanged)
     const parsedPaidLeaves = Array.isArray(paidLeaves) ? paidLeaves : [];
-    const parsedWeeklyHoliday = Array.isArray(weeklyHoliday) ? weeklyHoliday : [];
+    
+    // Handle weeklyHoliday - support both array and JSON string format
+    let parsedWeeklyHoliday = [];
+    if (Array.isArray(weeklyHoliday)) {
+      parsedWeeklyHoliday = weeklyHoliday;
+    } else if (typeof weeklyHoliday === 'string') {
+      try {
+        parsedWeeklyHoliday = JSON.parse(weeklyHoliday);
+      } catch (e) {
+        console.warn('⚠️ CREATE: Failed to parse weeklyHoliday as JSON, treating as empty array');
+        parsedWeeklyHoliday = [];
+      }
+    }
+    
     const parsedAccessPermissions = Array.isArray(accessPermissions) ? accessPermissions : [];
 
     const employee = new Employee({
