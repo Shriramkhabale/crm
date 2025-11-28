@@ -35,13 +35,12 @@ const branchRoutes = require('./routes/branchRoutes');
 const subscriptionPlanRoutes = require('./routes/subscriptionPlanRoutes');
 const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const payrollRoutes = require('./routes/payrollRoutes');
-const companyDashboardRoutes = require('./routes/companyDashboardRoutes');
+const companyDashboardRoutes = require('./routes/companyDashboardRoutes')
 const locationRoutes = require('./routes/locationTrackingRoutes');
 const ticketOptionsRoutes = require('./routes/ticketOptionsRoutes');
 const superadminDashboardRoutes = require('./routes/superadminDashboardRoutes');
 const advanceRoutes = require('./routes/advanceRoutes');
 const projectCustomStatusRoutes = require('./routes/projectCustomStatusRoutes');
-const superEmployeeRoutes = require('./routes/superEmployeeRoutes');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -97,7 +96,7 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/holidays', holidayRoutes);
-app.use('/api/holidaycreation', holidaycreationRoutes); 
+app.use('/api/holidaycreation', holidaycreationRoutes);
 app.use('/api/todos', authMiddleware, todosRoutes);
 app.use('/api/task', authMiddleware, tasksRoutes);
 app.use('/api/workflows', workflowRoutes);
@@ -116,7 +115,7 @@ app.use('/api/shifts', shifts);
 
 app.use('/api/support-ticket', supportRoutes);
 app.use('/api/ticket-progress', TicketProgress);
-app.use('/api/ticket-review', TicketReview)
+app.use('/api/ticket-review',TicketReview)
 app.use("/api/support-engineer-history", supportEngineerHistoryRoutes);
 app.use('/api/requests', requestRoutes);
 
@@ -130,9 +129,8 @@ app.use('/api/comapanydashboard', companyDashboardRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/ticket-options', ticketOptionsRoutes);
 app.use('/api/sadashboard', superadminDashboardRoutes);
-app.use('/api/advance', advanceRoutes);
-app.use('/api/prjCustomStatus', projectCustomStatusRoutes);
-app.use('/api/super-employees', superEmployeeRoutes);
+app.use('/api/advance', advanceRoutes); 
+app.use('/api/prjCustomStatus', projectCustomStatusRoutes); 
 
 // Start the server
 const PORT = process.env.PORT || 5000;
