@@ -16,13 +16,13 @@ const router = express.Router();
 const requestController = require('../controllers/requestController');
 const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
-// Accept uploads for image, audio, and file fields
+// Accept uploads for images, audios, and files fields (same as tasks)
 router.post(
   '/',
   upload.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'audio', maxCount: 1 },
-    { name: 'file', maxCount: 1 }
+    { name: 'images', maxCount: 15 },
+    { name: 'audios', maxCount: 15 },
+    { name: 'files', maxCount: 15 }
   ]),
   requestController.createRequestWithFiles
 );
@@ -33,9 +33,9 @@ router.get('/:id', requestController.getRequestById);
 router.put(
   '/:id',
   upload.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'audio', maxCount: 1 },
-    { name: 'file', maxCount: 1 }
+    { name: 'images', maxCount: 15 },
+    { name: 'audios', maxCount: 15 },
+    { name: 'files', maxCount: 15 }
   ]),
   requestController.updateRequestWithFiles
 );

@@ -79,17 +79,49 @@ exports.createRequestWithFiles = async (req, res) => {
   try {
     const data = req.body;
 
-    // Extract uploaded file URLs
+    // Extract uploaded file URLs (multiple files support)
+    const attachments = [];
     if (req.files) {
-      if (req.files.image && req.files.image[0]) {
-        data.image = req.files.image[0].path;
+      // Handle images
+      if (req.files.images && req.files.images.length > 0) {
+        req.files.images.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'image',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
       }
-      if (req.files.audio && req.files.audio[0]) {
-        data.audio = req.files.audio[0].path;
+      // Handle audios
+      if (req.files.audios && req.files.audios.length > 0) {
+        req.files.audios.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'audio',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
       }
-      if (req.files.file && req.files.file[0]) {
-        data.file = req.files.file[0].path;
+      // Handle files (documents)
+      if (req.files.files && req.files.files.length > 0) {
+        req.files.files.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'file',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
       }
+    }
+
+    if (attachments.length > 0) {
+      data.attachments = attachments;
     }
 
     const request = new Request(data);
@@ -106,16 +138,54 @@ exports.updateRequestWithFiles = async (req, res) => {
     const { id } = req.params;
     const data = req.body;
 
-    // Extract uploaded file URLs and overwrite fields if present
+    // Extract uploaded file URLs (multiple files support)
+    const attachments = [];
     if (req.files) {
-      if (req.files.image && req.files.image[0]) {
-        data.image = req.files.image[0].path;
+      // Handle images
+      if (req.files.images && req.files.images.length > 0) {
+        req.files.images.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'image',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
       }
-      if (req.files.audio && req.files.audio[0]) {
-        data.audio = req.files.audio[0].path;
+      // Handle audios
+      if (req.files.audios && req.files.audios.length > 0) {
+        req.files.audios.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'audio',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
       }
-      if (req.files.file && req.files.file[0]) {
-        data.file = req.files.file[0].path;
+      // Handle files (documents)
+      if (req.files.files && req.files.files.length > 0) {
+        req.files.files.forEach(file => {
+          attachments.push({
+            url: file.path,
+            type: 'file',
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        });
+      }
+    }
+
+    if (attachments.length > 0) {
+      // Append to existing attachments or replace
+      const existingRequest = await Request.findById(id);
+      if (existingRequest && existingRequest.attachments) {
+        data.attachments = [...existingRequest.attachments, ...attachments];
+      } else {
+        data.attachments = attachments;
       }
     }
 
