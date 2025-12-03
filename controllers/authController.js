@@ -191,53 +191,49 @@ exports.login = async (req, res) => {
         }
       });
     }
-    // ---------------- SUPER EMPLOYEE LOGIN ----------------
-    user = await SuperEmployee.findOne({ email });
-    if (user) {
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
+  // ---------------- SUPER EMPLOYEE LOGIN ----------------
+user = await SuperEmployee.findOne({ email });
+if (user) {
+  console.log('SuperEmployee found:', user);
+  console.log('SuperEmployee superadmin field:', user.superadmin);
+  console.log('SuperEmployee franchise field:', user.franchise);
+  
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      // Check if super employee is active
-      if (user.isActive === false) {
-        return res.status(403).json({
-          message: "Your account is inactive. Please contact your administrator."
-        });
-      }
+  // Check if super employee is active
+  if (user.isActive === false) {
+    return res.status(403).json({
+      message: "Your account is inactive. Please contact your administrator."
+    });
+  }
 
-      // Check Franchise status if applicable
-      if (user.franchise) {
-        const franchise = await Franchise.findById(user.franchise);
-        if (!franchise) {
-          return res.status(400).json({ message: "Associated Franchise not found" });
-        }
-        // Optional: Check franchise subscription/status if needed
-        // if (!franchise.isActive) ... 
-      }
+  // FIXED: Include superadmin and franchise in the token
+  const token = generateToken({
+    _id: user._id,
+    role: user.role || 'super_employee',
+    accessPermissions: user.accessPermissions || [],
+    superadmin: user.superadmin,  // ✅ Added: Include superadmin ID in token
+    franchise: user.franchise      // ✅ Added: Include franchise ID in token
+  });
 
-      // FIXED: Include superadmin and franchise in the token
-      const token = generateToken({
-        _id: user._id,
-        role: user.role || 'super_employee',
-        accessPermissions: user.accessPermissions || [],
-        superadmin: user.superadmin,  // ✅ Added: Include superadmin ID in token
-        franchise: user.franchise      // ✅ Added: Include franchise ID in token
-      });
+  console.log('Generated token payload includes superadmin:', user.superadmin);
 
-      return res.json({
-        message: "Login successful",
-        token,
-        user: {
-          id: user._id,
-          name: user.teamMemberName,
-          email: user.email,
-          role: user.role || 'super_employee',
-          type: "super_employee",
-          accessPermissions: user.accessPermissions || [],
-          superadmin: user.superadmin,
-          franchise: user.franchise
-        }
-      });
+  return res.json({
+    message: "Login successful",
+    token,
+    user: {
+      id: user._id,
+      name: user.teamMemberName,
+      email: user.email,
+      role: user.role || 'super_employee',
+      type: "super_employee",
+      accessPermissions: user.accessPermissions || [],
+      superadmin: user.superadmin,
+      franchise: user.franchise
     }
+  });
+}
     // ---------------- BRANCH LOGIN ----------------
     user = await Branch.findOne({ email });
     if (user) {

@@ -14,7 +14,10 @@ const protect = (req, res, next) => {
     req.user = {
       id: decoded.id,
       role: decoded.role,
-      companyId: decoded.companyId || null,  // add companyId here
+      companyId: decoded.companyId || null,
+      accessPermissions: decoded.accessPermissions || [],
+      superadmin: decoded.superadmin || null,  // For super_employee
+      franchise: decoded.franchise || null      // For super_employee
     };
     next();
   } catch (err) {

@@ -5,8 +5,6 @@ const bcrypt = require('bcryptjs');
 exports.createSuperEmployee = async (req, res) => {
     try {
         const {
-            superadmin,
-            franchise,
             teamMemberName,
             mobileNumber,
             email,
@@ -39,10 +37,28 @@ exports.createSuperEmployee = async (req, res) => {
             });
         }
 
+        // IMPORTANT: Set superadmin/franchise based on logged-in user
+        let superadminId = null;
+        let franchiseId = null;
+
+        if (req.user.role === 'superadmin') {
+            superadminId = req.user.id;
+        } else if (req.user.role === 'super_employee') {
+            // Super employees can only create super employees under their superadmin
+            superadminId = req.user.superadmin;
+            if (!superadminId) {
+                return res.status(400).json({ 
+                    message: 'Super employee has no associated superadmin' 
+                });
+            }
+        } else if (req.user.role === 'franchise') {
+            franchiseId = req.user.id;
+        }
+
         // Create new super employee
         const superEmployee = new SuperEmployee({
-            superadmin: superadmin || null,
-            franchise: franchise || null,
+            superadmin: superadminId,
+            franchise: franchiseId,
             teamMemberName,
             mobileNumber,
             email,
@@ -70,19 +86,45 @@ exports.createSuperEmployee = async (req, res) => {
 // Get all SuperEmployees
 exports.getAllSuperEmployees = async (req, res) => {
     try {
-        const { isActive, search, superadmin, franchise } = req.query;
+        const { isActive, search } = req.query;
 
         // Build query
         let query = {};
 
-        // Filter by superadmin or franchise
-        if (superadmin) {
-            query.superadmin = superadmin;
+        // SUPER IMPORTANT: Filter by user role
+        // If user is super_employee, only show super employees under their superadmin
+        if (req.user.role === 'super_employee') {
+            console.log('Super_employee accessing super employees list');
+            console.log('Super_employee superadmin ID:', req.user.superadmin);
+            
+            if (!req.user.superadmin) {
+                return res.status(400).json({ 
+                    message: 'Super employee has no associated superadmin' 
+                });
+            }
+            
+            query.superadmin = req.user.superadmin;
+            console.log('Query for super_employee:', query);
         }
-        if (franchise) {
-            query.franchise = franchise;
+        // If user is superadmin, only show super employees they created
+        else if (req.user.role === 'superadmin') {
+            query.superadmin = req.user.id;
+            console.log('Query for superadmin:', query);
+        }
+        // If user is franchise, only show super employees under their franchise
+        else if (req.user.role === 'franchise') {
+            query.franchise = req.user.id;
+            console.log('Query for franchise:', query);
+        }
+        // Other roles shouldn't access this endpoint
+        else {
+            console.log('Unauthorized role trying to access super employees:', req.user.role);
+            return res.status(403).json({ 
+                message: 'Unauthorized to view super employees' 
+            });
         }
 
+        // Additional filters
         if (isActive !== undefined) {
             query.isActive = isActive === 'true';
         }
@@ -95,11 +137,15 @@ exports.getAllSuperEmployees = async (req, res) => {
             ];
         }
 
+        console.log('Final query for super employees:', query);
+
         const superEmployees = await SuperEmployee.find(query)
             .select('-password')
             .populate('superadmin', 'name email')
             .populate('franchise', 'businessName email')
             .sort({ createdAt: -1 });
+
+        console.log('Found super employees:', superEmployees.length);
 
         res.json({
             message: 'Super Employees retrieved successfully',
@@ -112,18 +158,38 @@ exports.getAllSuperEmployees = async (req, res) => {
     }
 };
 
-// Get SuperEmployee by ID
+// Get SuperEmployee by ID - Updated with authorization
 exports.getSuperEmployeeById = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const superEmployee = await SuperEmployee.findById(id)
+        // Build query with authorization
+        let query = { _id: id };
+
+        if (req.user.role === 'super_employee') {
+            if (!req.user.superadmin) {
+                return res.status(400).json({ 
+                    message: 'Super employee has no associated superadmin' 
+                });
+            }
+            query.superadmin = req.user.superadmin;
+        } else if (req.user.role === 'superadmin') {
+            query.superadmin = req.user.id;
+        } else if (req.user.role === 'franchise') {
+            query.franchise = req.user.id;
+        } else {
+            return res.status(403).json({ 
+                message: 'Unauthorized to view super employee' 
+            });
+        }
+
+        const superEmployee = await SuperEmployee.findOne(query)
             .select('-password')
             .populate('superadmin', 'name email')
             .populate('franchise', 'businessName email');
 
         if (!superEmployee) {
-            return res.status(404).json({ message: 'Super Employee not found' });
+            return res.status(404).json({ message: 'Super Employee not found or access denied' });
         }
 
         res.json({

@@ -33,7 +33,17 @@ router.put(
 
 router.delete('/tasks/:id', authMiddleware, taskController.deleteTask);  // Handles ?deleteSeries=true
 
-router.put('/:taskId/shifttask', authMiddleware, taskController.shiftedTask);
+router.put(
+  '/:taskId/shifttask',
+  authMiddleware,
+  upload.fields([
+    { name: 'images', maxCount: 15 },
+    { name: 'audios', maxCount: 15 },
+    { name: 'files', maxCount: 15 },
+  ]),
+  taskController.shiftedTask
+);
+
 router.get('/tasks/employee/:employeeId', authMiddleware, taskController.getTasksByEmployeeId);  // FIXED: Added auth
 
 // Get credit points task-wise

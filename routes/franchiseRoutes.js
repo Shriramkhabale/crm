@@ -25,7 +25,7 @@ const franchiseController = require('../controllers/franchiseController');
 const upload = require('../middleware/multerCloudinary'); // multer-cloudinary middleware
 
 router.use(protect);
-router.use(authorizeRole('superadmin'));
+// router.use(authorizeRole('superadmin' || 'super_employee'));
 
 // Create franchise with logo upload
 router.post(

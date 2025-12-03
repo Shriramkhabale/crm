@@ -12,10 +12,13 @@ const authMiddleware = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = {
+      id: decoded.id,
       userId: decoded.id,
       role: decoded.role,
       companyId: decoded.companyId || null,
-      accessPermissions: decoded.accessPermissions || [],  // add here
+      accessPermissions: decoded.accessPermissions || [],
+      superadmin: decoded.superadmin || null,  // For super_employee
+      franchise: decoded.franchise || null      // For super_employee
     };
     next();
   } catch (err) {

@@ -118,7 +118,7 @@ app.use('/api/shifts', shifts);
 
 app.use('/api/support-ticket', supportRoutes);
 app.use('/api/ticket-progress', TicketProgress);
-app.use('/api/ticket-review', TicketReview)
+app.use('/api/ticket-review', TicketReview);
 app.use("/api/support-engineer-history", supportEngineerHistoryRoutes);
 app.use('/api/requests', requestRoutes);
 
@@ -141,10 +141,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-
-
-
 
 
 
