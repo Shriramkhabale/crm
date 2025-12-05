@@ -3,6 +3,7 @@
 const Task = require("../models/Task");
 const Counter = require("../models/Counter"); // Import Counter model
 const Employee = require("../models/Employee");
+const Company = require("../models/Company");
 const TaskStatusUpdate = require("../models/TaskStatusUpdate");
 const Holiday = require("../models/Holiday");
 const mongoose = require("mongoose");
@@ -30,6 +31,38 @@ async function getCompanyIdFromUser(user) {
     if (!employee) throw new Error("Employee not found");
     return employee.company.toString();
   }
+}
+
+// Helper function to populate createdBy from either Employee or Company
+async function populateCreatedBy(taskOrTasks) {
+  const tasks = Array.isArray(taskOrTasks) ? taskOrTasks : [taskOrTasks];
+  
+  for (let task of tasks) {
+    if (!task.createdBy) continue;
+    
+    const createdById = task.createdBy._id || task.createdBy;
+    
+    // Try to find as Employee first
+    const employee = await Employee.findById(createdById).select('firstName lastName teamMemberName role');
+    if (employee) {
+      task.createdBy = employee;
+      continue;
+    }
+    
+    // If not found as Employee, try Company
+    const company = await Company.findById(createdById).select('businessName');
+    if (company) {
+      // Map company fields to a format similar to employee for consistency
+      task.createdBy = {
+        _id: company._id,
+        businessName: company.businessName,
+        name: company.businessName, // Add name field for compatibility
+        role: 'company'
+      };
+    }
+  }
+  
+  return Array.isArray(taskOrTasks) ? tasks : tasks[0];
 }
 
 const validWeekDays = [
@@ -790,6 +823,8 @@ exports.createTask = async (req, res) => {
       priority: priority || "medium",
       nextFollowUpDateTime: !repeat ? new Date(nextFollowUpDateTime) : undefined,
       nextFinishDateTime: actualNextFinishDateTime,
+      recurringStartDate: repeat && recurringStartDate ? new Date(recurringStartDate) : undefined,
+      recurringEndDate: repeat && recurringEndDate ? new Date(recurringEndDate) : undefined,
       company: new mongoose.Types.ObjectId(company),
       status: status || "pending",
       createdBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),
@@ -1135,6 +1170,46 @@ exports.getAllTasks = async (req, res) => {
           as: "recurringInstances",
         },
       },
+      // Populate createdBy for parent tasks
+      {
+        $lookup: {
+          from: "employees",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdByEmployee",
+        },
+      },
+      {
+        $lookup: {
+          from: "companies",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdByCompany",
+        },
+      },
+      {
+        $addFields: {
+          createdBy: {
+            $cond: {
+              if: { $gt: [{ $size: "$createdByEmployee" }, 0] },
+              then: { $arrayElemAt: ["$createdByEmployee", 0] },
+              else: {
+                $cond: {
+                  if: { $gt: [{ $size: "$createdByCompany" }, 0] },
+                  then: { $arrayElemAt: ["$createdByCompany", 0] },
+                  else: "$createdBy"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          createdByEmployee: 0,
+          createdByCompany: 0
+        }
+      },
       // Compute overdue (unchanged)
       {
         $addFields: {
@@ -1253,19 +1328,64 @@ exports.getTaskById = async (req, res) => {
     const { id } = req.params;
     const company = await getCompanyIdFromUser(req.user);
     let task = await Task.findOne({ _id: id, company })
-      .populate("assignedTo", "firstName role")
-      .populate("createdBy", "firstName role");
+      .populate("assignedTo", "firstName role");
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
+    }
+
+    // Convert to plain object
+    task = task.toObject();
+    
+    // Manually populate createdBy with either Employee or Company
+    if (task.createdBy) {
+      const createdById = task.createdBy._id || task.createdBy;
+      
+      // Try to find as Employee first
+      const employee = await Employee.findById(createdById).select('firstName lastName teamMemberName role').lean();
+      if (employee) {
+        task.createdBy = employee;
+      } else {
+        // If not found as Employee, try Company
+        const companyData = await Company.findById(createdById).select('businessName').lean();
+        if (companyData) {
+          task.createdBy = {
+            _id: companyData._id,
+            businessName: companyData.businessName,
+            name: companyData.businessName,
+            role: 'company'
+          };
+        }
+      }
     }
 
     // UPDATED: Fetch ALL instances (past + future) if parent
     let recurringInstances = [];
     if (task.repeat) {
-      recurringInstances = await Task.find({ parentTask: id, company })
+      let instances = await Task.find({ parentTask: id, company })
         .populate("assignedTo", "firstName role")
-        .populate("createdBy", "firstName role")
         .sort({ startDateTime: 1 });
+      
+      // Convert to plain objects and populate createdBy for all instances
+      recurringInstances = instances.map(inst => inst.toObject());
+      for (let instance of recurringInstances) {
+        if (instance.createdBy) {
+          const createdById = instance.createdBy._id || instance.createdBy;
+          const employee = await Employee.findById(createdById).select('firstName lastName teamMemberName role').lean();
+          if (employee) {
+            instance.createdBy = employee;
+          } else {
+            const companyData = await Company.findById(createdById).select('businessName').lean();
+            if (companyData) {
+              instance.createdBy = {
+                _id: companyData._id,
+                businessName: companyData.businessName,
+                name: companyData.businessName,
+                role: 'company'
+              };
+            }
+          }
+        }
+      }
 
       // Generate current due instance if missing and matching (<= today)
       if (task.recurrenceActive && task.nextFinishDateTime) {
@@ -1275,7 +1395,7 @@ exports.getTaskById = async (req, res) => {
           task.nextFinishDateTime
         );
         const currentInstance = await generateNextInstance(
-          task.toObject(),
+          task,
           company,
           holidays,
           task.nextFinishDateTime
@@ -1297,7 +1417,7 @@ exports.getTaskById = async (req, res) => {
 
     // Compute overdue for main task
     const taskWithOverdue = {
-      ...task.toObject(),
+      ...task,
       isOverdue: task.endDateTime < new Date() && task.status !== "completed",
     };
     res.json({
@@ -1849,11 +1969,38 @@ exports.getTasksByEmployeeId = async (req, res) => {
       return res.status(400).json({ message: "Invalid employee ID" });
     }
 
-    const tasks = await Task.find({ assignedTo: employeeId })
+    let tasks = await Task.find({ assignedTo: employeeId })
       .populate("assignedTo", "firstName lastName role")
-      .populate("createdBy", "firstName lastName role")
       .populate("department", "name") // adjust fields as per your schema
       .sort({ createdAt: -1 });
+
+    // Convert to plain objects and manually populate createdBy
+    tasks = tasks.map(task => task.toObject());
+    
+    // Populate createdBy with either Employee or Company
+    for (let task of tasks) {
+      if (task.createdBy) {
+        const createdById = task.createdBy._id || task.createdBy;
+        
+        // Try to find as Employee first
+        const employee = await Employee.findById(createdById).select('firstName lastName teamMemberName role').lean();
+        if (employee) {
+          task.createdBy = employee;
+          continue;
+        }
+        
+        // If not found as Employee, try Company
+        const company = await Company.findById(createdById).select('businessName').lean();
+        if (company) {
+          task.createdBy = {
+            _id: company._id,
+            businessName: company.businessName,
+            name: company.businessName,
+            role: 'company'
+          };
+        }
+      }
+    }
 
     res.json({ tasks });
   } catch (error) {
