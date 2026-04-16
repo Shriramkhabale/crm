@@ -20,6 +20,12 @@ router.post(
 // Get attendance records (with optional filters)
 router.get('/', authMiddleware, attendanceController.getAttendanceRecords);
 
+// Manual attendance routes
+router.post('/manual', authMiddleware, attendanceController.addManualAttendance);
+router.post('/manual/bulk', authMiddleware, attendanceController.addBulkManualAttendance);
+router.put('/manual/:id', authMiddleware, attendanceController.updateManualAttendance);
+router.delete('/manual/:id', authMiddleware, attendanceController.deleteManualAttendance);
+
 // Get attendance by ID
 router.get('/:id', authMiddleware, attendanceController.getAttendanceById);
 

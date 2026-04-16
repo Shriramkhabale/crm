@@ -18,6 +18,7 @@ const companySchema = new mongoose.Schema({
   parentCompanyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   branches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Company' }] ,
   businessLogo: { type: String },
+  userLimit: { type: Number, default: 0 },
    // New fields for password reset
   resetPasswordToken: {
     type: String,  // Hashed token
@@ -26,6 +27,11 @@ const companySchema = new mongoose.Schema({
     type: Date,  // Expiration timestamp
   },
 }, { timestamps: true });
+
+// Indexes for efficient queries (superadmin/franchise lookup, branch filtering)
+companySchema.index({ superadmin: 1 });
+companySchema.index({ franchise: 1 });
+companySchema.index({ parentCompanyId: 1, isBranch: 1 });
 
 // Hash password before saving
 companySchema.pre('save', async function (next) {

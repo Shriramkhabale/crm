@@ -2,10 +2,33 @@ const Employee = require('../models/Employee');
 const Task = require('../models/Task');
 const Project = require('../models/ProjectMgnt');
 const SupportTicket = require('../models/SupportTicket');
+const Notification = require('../models/Notification');
+const mongoose = require('mongoose');
 
 exports.getNotifications = async (req, res) => {
-    // Dummy implementation returning empty array as requested to fix 404
-    res.json([]);
+    try {
+        const userId = req.user?.id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.json([]);
+        }
+        const items = await Notification.find({ recipient: userId })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .lean();
+        const data = items.map(n => ({
+            id: n._id,
+            type: n.type,
+            title: n.title || (n.type === 'task' ? 'Task Assigned' : n.type === 'ticket' ? 'Ticket Assigned' : 'Lead Assigned'),
+            message: n.message,
+            unread: !n.isRead,
+            createdAt: n.createdAt,
+            relatedId: n.relatedId
+        }));
+        res.json(data);
+    } catch (e) {
+        console.error('Error fetching notifications:', e);
+        res.json([]);
+    }
 };
 
 exports.getEmployeeCount = async (req, res) => {

@@ -489,6 +489,9 @@
 const Milestone = require('../models/Milestone');
 const ProjectMgnt = require('../models/ProjectMgnt');
 const Employee = require('../models/Employee');
+const Notification = require('../models/Notification');
+const mongoose = require('mongoose');
+const { emitToUser } = require('../config/socket');
 
 // Helper to get company ID from user
 async function getCompanyIdFromUser(user) {
@@ -619,6 +622,37 @@ exports.createMilestone = async (req, res) => {
       .populate('project', 'title status')
       .populate('assignedTeamMember', 'teamMemberName email')
       .populate('statusHistory.updatedBy', 'teamMemberName email');
+
+    // Notify assigned team members about this milestone
+    try {
+      const recipientIds = (assignedTeamMember || []).filter(id => mongoose.Types.ObjectId.isValid(String(id)));
+      if (recipientIds.length > 0) {
+        const projectTitle = populatedMilestone?.project?.title || 'a project';
+        const docs = recipientIds.map(id => ({
+          recipient: id,
+          type: 'milestone',
+          title: 'Milestone Assigned',
+          message: `You have been assigned to milestone "${title}" in project "${projectTitle}"`,
+          relatedId: milestone._id,
+          isRead: false,
+          meta: {}
+        }));
+        const created = await Notification.insertMany(docs);
+        created.forEach(n => {
+          emitToUser(n.recipient, 'notification:new', {
+            id: n._id,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            unread: true,
+            createdAt: n.createdAt,
+            relatedId: n.relatedId
+          });
+        });
+      }
+    } catch (notifErr) {
+      console.error('Failed to send milestone notifications:', notifErr.message);
+    }
 
     res.status(201).json({ message: 'Milestone created', milestone: populatedMilestone });
   } catch (error) {

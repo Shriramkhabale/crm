@@ -7,6 +7,8 @@ const Company = require("../models/Company");
 const TaskStatusUpdate = require("../models/TaskStatusUpdate");
 const Holiday = require("../models/Holiday");
 const mongoose = require("mongoose");
+const Notification = require("../models/Notification");
+const { emitToUser } = require("../config/socket");
 
 // Updated: Helper to get next sequential taskId per company (e.g., T1, T2 for each company)
 async function getNextSequenceValue(companyId, sequenceName = "taskid") {
@@ -896,6 +898,72 @@ exports.createTask = async (req, res) => {
     await task.populate("assignedTo", "firstName lastName role");
     await task.populate("createdBy", "firstName lastName role");
 
+    // Create notifications for each assignee
+    try {
+      // task.company is a guaranteed valid ObjectId since task.save() already succeeded
+      const companyObjectId = task.company;
+
+      let companyName = '';
+      try {
+        const companyDoc = await Company.findById(companyObjectId).select('businessName').lean();
+        companyName = companyDoc ? companyDoc.businessName : '';
+      } catch {}
+
+      const creatorName = (task.createdBy && (task.createdBy.firstName || task.createdBy.businessName))
+        ? (task.createdBy.firstName ? `${task.createdBy.firstName} ${task.createdBy.lastName || ''}`.trim() : task.createdBy.businessName)
+        : 'Employee';
+
+      const notifications = assignedToArray.map(empId => ({
+        recipient: new mongoose.Types.ObjectId(empId),
+        type: 'task',
+        title: 'Task Assigned',
+        message: `New task assigned: ${title}${companyName ? ` | Company: ${companyName}` : ''}`,
+        relatedId: task._id,
+        meta: {
+          assignedBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),
+          assignedByName: creatorName,
+          priority: priority || 'medium',
+          companyId: companyObjectId,
+          companyName: companyName || ''
+        }
+      }));
+
+      // Also notify the company when an employee/manager creates the task
+      if (req.user.role !== 'company') {
+        notifications.push({
+          recipient: companyObjectId,
+          type: 'task',
+          title: 'New Task Created',
+          message: `${creatorName} created a new task: ${title}`,
+          relatedId: task._id,
+          meta: {
+            assignedBy: new mongoose.Types.ObjectId(req.user.id || req.user.userId),
+            assignedByName: creatorName,
+            priority: priority || 'medium',
+            companyId: companyObjectId,
+            companyName: companyName || ''
+          }
+        });
+      }
+
+      if (notifications.length) {
+        const created = await Notification.insertMany(notifications);
+        created.forEach(n => {
+          emitToUser(n.recipient, 'notification:new', {
+            id: n._id,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            relatedId: n.relatedId,
+            createdAt: n.createdAt,
+            meta: n.meta
+          });
+        });
+      }
+    } catch (notifyErr) {
+      console.warn('Failed to create/emit task notifications:', notifyErr.message);
+    }
+
     res.status(201).json({
       message: "Task created successfully",
       task,
@@ -1655,6 +1723,17 @@ exports.updateTask = async (req, res) => {
     task.department = department; // Department ID
     task.priority = priority;
     task.status = status;
+    // Manage completedAt timestamp when updating task directly
+    try {
+      const normalized = String(status).toLowerCase();
+      if (normalized.includes('complete')) {
+        if (!task.completedAt) task.completedAt = new Date();
+      } else {
+        task.completedAt = undefined;
+      }
+    } catch (e) {
+      console.warn('Could not set completedAt during task update', e);
+    }
     task.creditPoints = creditPoints;
     // Dates
     if (startDateTime) task.startDateTime = startDateTime;
@@ -1945,6 +2024,51 @@ exports.shiftedTask = async (req, res) => {
       console.log(
         `Date updated on recurring instance ${taskId} - future generations unaffected`
       );
+    }
+
+    // NEW: Create notifications for newly assigned employees on shift
+    try {
+      let shiftCompanyName = '';
+      try {
+        const shiftCompanyDoc = await Company.findById(task.company).select('businessName').lean();
+        shiftCompanyName = shiftCompanyDoc ? shiftCompanyDoc.businessName : '';
+      } catch {}
+      const oldSet = new Set(oldAssigneeIds.map(id => id.toString()));
+      const newlyAssigned = newAssignedToArray
+        .map(id => id && id.toString())
+        .filter(id => id && !oldSet.has(id));
+      const recipients = newlyAssigned.length ? newlyAssigned : newAssignedToArray.map(id => id && id.toString());
+      const notifications = recipients
+        .filter(Boolean)
+        .map(empId => ({
+          recipient: new mongoose.Types.ObjectId(empId),
+          type: 'task',
+          title: 'Shifted Task Assigned',
+          message: `Shifted task assigned: ${task.title}${shiftCompanyName ? ` | Company: ${shiftCompanyName}` : ''}`,
+          relatedId: task._id,
+          meta: {
+            assignedBy: shiftedBy ? new mongoose.Types.ObjectId(shiftedBy) : undefined,
+            assignedByName: 'Manager',
+            priority: task.priority || 'medium',
+            companyName: shiftCompanyName || ''
+          }
+        }));
+      if (notifications.length) {
+        const created = await Notification.insertMany(notifications);
+        created.forEach(n => {
+          emitToUser(n.recipient, 'notification:new', {
+            id: n._id,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            relatedId: n.relatedId,
+            createdAt: n.createdAt,
+            meta: n.meta
+          });
+        });
+      }
+    } catch (notifyErr) {
+      console.warn('Failed to create/emit shifted-task notifications:', notifyErr.message);
     }
 
     res.json({

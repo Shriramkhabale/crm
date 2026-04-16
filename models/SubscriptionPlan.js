@@ -26,12 +26,19 @@ const subscriptionPlanSchema = new mongoose.Schema({
     required: true,
     min: 0,
   },
-  access: {
-    task: { type: Boolean, default: false },
-    lead: { type: Boolean, default: false },
+  accessPermissions: {
+    taskManagement: { type: Boolean, default: false },
+    leadManagement: { type: Boolean, default: false },
     hrms: { type: Boolean, default: false },
     support: { type: Boolean, default: false },
     projectManagement: { type: Boolean, default: false },
+  },
+  userLimits: {
+    taskManagement: { type: Number, default: 0 },
+    leadManagement: { type: Number, default: 0 },
+    hrms: { type: Number, default: 0 },
+    support: { type: Number, default: 0 },
+    projectManagement: { type: Number, default: 0 },
   },
   createdAt: {
     type: Date,

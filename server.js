@@ -1,6 +1,8 @@
 //server.js
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const jwt = require('jsonwebtoken');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const superadminRoutes = require('./routes/superadminRoutes');
@@ -43,6 +45,9 @@ const advanceRoutes = require('./routes/advanceRoutes');
 const projectCustomStatusRoutes = require('./routes/projectCustomStatusRoutes');
 const superEmployeeRoutes = require('./routes/superEmployeeRoutes');
 const dashboardStatsRoutes = require('./routes/dashboardStatsRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const { startTaskReminderScheduler } = require('./utils/taskReminderScheduler');
+const { setIO } = require('./config/socket');
 
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -50,6 +55,7 @@ const cors = require('cors');
 
 
 const app = express();
+const server = http.createServer(app);
 
 // Connect to MongoDB
 connectDB();
@@ -79,6 +85,36 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Socket.IO setup
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true
+  }
+});
+setIO(io);
+
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
+  socket.on('authenticate', (token) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.id;
+      if (userId) {
+        socket.join(`user:${userId}`);
+        socket.emit('authenticated', { userId });
+        console.log(`Socket ${socket.id} joined room user:${userId}`);
+      }
+    } catch (e) {
+      console.warn('Socket auth failed:', e.message);
+    }
+  });
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected:', socket.id);
+  });
+});
 
 
 
@@ -135,11 +171,13 @@ app.use('/api/sadashboard', superadminDashboardRoutes);
 app.use('/api/advance', advanceRoutes);
 app.use('/api/prjCustomStatus', projectCustomStatusRoutes);
 app.use('/api/super-employees', superEmployeeRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  startTaskReminderScheduler();
 });
 
 

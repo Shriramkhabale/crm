@@ -1,7 +1,30 @@
 const Company = require('../models/Company');
 const Franchise = require('../models/Franchise');
+const SubscriptionPlan = require('../models/SubscriptionPlan'); // Add this import
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
+
+// Helper to get total user limit from subscription plan
+const getSubscriptionUserLimit = async (company) => {
+  if (!company.businessSubscriptionPlan) return 0;
+
+  let planData = company.businessSubscriptionPlan;
+
+  // If planData is a string, try to parse it as JSON
+  if (typeof planData === 'string') {
+    try {
+      const parsedPlan = JSON.parse(planData);
+      return parsedPlan.userLimit || 0;
+    } catch (e) {
+      // If parsing fails, treat as ObjectId
+      const plan = await SubscriptionPlan.findById(planData);
+      return plan ? plan.userLimit : 0;
+    }
+  } else if (typeof planData === 'object') {
+    return planData.userLimit || 0;
+  }
+  return 0;
+};
 
 // exports.createCompanyWithLogo = async (req, res) => {
 //   try {
@@ -384,6 +407,26 @@ exports.updateCompanyWithLogo = async (req, res) => {
       updateData.businessLogo = req.file.path;
     }
 
+    // Ensure userLimit is handled as a number
+    if (updateData.userLimit !== undefined) {
+      const requestedOwnLimit = Number(updateData.userLimit) || 0;
+      const subscriptionLimit = await getSubscriptionUserLimit(company);
+
+      // Sum of userLimits of ALL branches
+      const branches = await Company.find({ 
+        parentCompanyId: company._id, 
+        isBranch: true 
+      });
+      const branchesAllocatedLimit = branches.reduce((sum, b) => sum + (b.userLimit || 0), 0);
+
+      if (subscriptionLimit > 0 && (branchesAllocatedLimit + requestedOwnLimit) > subscriptionLimit) {
+        return res.status(400).json({ 
+          message: `User limit exceeded. Total allowed in subscription: ${subscriptionLimit}. Already allocated to branches: ${branchesAllocatedLimit}. Requested for company: ${requestedOwnLimit}` 
+        });
+      }
+      updateData.userLimit = requestedOwnLimit;
+    }
+
     // Parse weeklyHoliday if present
     if (updateData.weeklyHoliday) {
       try {
@@ -461,7 +504,8 @@ exports.createBranchWithLogo = async (req, res) => {
       businessSubscriptionPlan,
       weeklyHoliday,
       address,
-      franchise
+      franchise,
+      userLimit
     } = req.body;
 
     if (!businessName || !businessEmail || !password) {
@@ -481,9 +525,50 @@ exports.createBranchWithLogo = async (req, res) => {
       return res.status(400).json({ message: 'Cannot add branch to a branch' });
     }
 
+    const requestedUserLimit = Number(userLimit) || 0;
+    const subscriptionLimit = await getSubscriptionUserLimit(parentCompany);
+
+    // Sum of userLimits of all existing branches
+    const existingBranches = await Company.find({ parentCompanyId: parentCompany._id, isBranch: true });
+    const allocatedLimit = existingBranches.reduce((sum, branch) => sum + (branch.userLimit || 0), 0);
+
+    // Parent company's own userLimit (if any)
+    const companyOwnLimit = parentCompany.userLimit || 0;
+
+    if (subscriptionLimit > 0 && (allocatedLimit + companyOwnLimit + requestedUserLimit) > subscriptionLimit) {
+      return res.status(400).json({ 
+        message: `User limit exceeded. Total allowed in subscription: ${subscriptionLimit}. Already allocated/used: ${allocatedLimit + companyOwnLimit}. Requested: ${requestedUserLimit}` 
+      });
+    }
+
     const existingBranch = await Company.findOne({ businessEmail });
     if (existingBranch) {
       return res.status(400).json({ message: 'Branch email already exists' });
+    }
+
+    // Inherit subscription plan details from parent company
+    let branchSubscriptionPlan = businessSubscriptionPlan;
+    if (parentCompany.businessSubscriptionPlan) {
+      try {
+        let parentPlan = parentCompany.businessSubscriptionPlan;
+        if (typeof parentPlan === 'string') {
+          parentPlan = JSON.parse(parentPlan.replace(/\\"/g, '"'));
+        }
+        
+        // Create branch plan based on parent plan but with branch-specific userLimit
+        const planObj = {
+          title: 'Branch Plan',
+          userLimit: requestedUserLimit,
+          accessPermissions: parentPlan.accessPermissions || {},
+          startDate: parentPlan.startDate || parentCompany.businessCreatedDate,
+          endDate: parentPlan.endDate,
+          duration: parentPlan.duration,
+          price: 0 // Branch plan is covered by parent
+        };
+        branchSubscriptionPlan = JSON.stringify(planObj);
+      } catch (e) {
+        console.error('Error inheriting subscription plan:', e);
+      }
     }
 
     // UPDATED: Parse weeklyHoliday from JSON string to array
@@ -504,14 +589,15 @@ exports.createBranchWithLogo = async (req, res) => {
       EmergencyMobNo,
       password,
       businessCreatedDate,
-      businessSubscriptionPlan,
+      businessSubscriptionPlan: branchSubscriptionPlan,
       weeklyHoliday: weeklyHolidayArr,
       address,
       businessLogo,
       franchise,
       isBranch: true,
       parentCompanyId: parentCompany._id,
-      branches: []
+      branches: [],
+      userLimit: requestedUserLimit
     });
 
     await branch.save();
@@ -554,6 +640,31 @@ exports.updateBranchWithLogo = async (req, res) => {
     if (req.file) {
       updateData.businessLogo = req.file.path;
     }
+
+    // Ensure userLimit is handled as a number
+    if (updateData.userLimit !== undefined) {
+      const requestedLimit = Number(updateData.userLimit) || 0;
+      const subscriptionLimit = await getSubscriptionUserLimit(parentCompany);
+
+      // Sum of userLimits of ALL OTHER branches
+      const otherBranches = await Company.find({ 
+        parentCompanyId: companyId, 
+        isBranch: true,
+        _id: { $ne: branchId } 
+      });
+      const otherAllocatedLimit = otherBranches.reduce((sum, b) => sum + (b.userLimit || 0), 0);
+
+      // Parent company's own userLimit
+      const companyOwnLimit = parentCompany.userLimit || 0;
+
+      if (subscriptionLimit > 0 && (otherAllocatedLimit + companyOwnLimit + requestedLimit) > subscriptionLimit) {
+        return res.status(400).json({ 
+          message: `User limit exceeded. Total allowed: ${subscriptionLimit}. Already allocated/used: ${otherAllocatedLimit + companyOwnLimit}. Requested: ${requestedLimit}` 
+        });
+      }
+      updateData.userLimit = requestedLimit;
+    }
+
     // UPDATED: Parse weeklyHoliday if present
     if (updateData.weeklyHoliday) {
       try {

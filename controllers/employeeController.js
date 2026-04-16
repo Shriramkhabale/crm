@@ -1,4 +1,5 @@
 const Employee = require('../models/Employee');
+const Company = require('../models/Company');
 const bcrypt = require('bcryptjs');
 const cloudinary = require('../config/cloudinaryConfig');  // For deletion
 const Leave = require('../models/Leave');  // Add import
@@ -135,6 +136,19 @@ exports.createEmployee = async (req, res) => {
     // Email duplicate check
     const existing = await Employee.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Employee email already exists' });
+
+    // Check User Limit
+    const targetCompany = await Company.findById(company);
+    if (!targetCompany) return res.status(404).json({ message: 'Company not found' });
+
+    const employeeCount = await Employee.countDocuments({ company });
+    
+    // If userLimit is set (greater than 0), enforce it
+    if (targetCompany.userLimit > 0 && employeeCount >= targetCompany.userLimit) {
+      return res.status(400).json({ 
+        message: `User limit reached for this ${targetCompany.isBranch ? 'branch' : 'company'}. Maximum allowed: ${targetCompany.userLimit}` 
+      });
+    }
 
     // Fixed images (unchanged)
     const adharImage = req.files?.adharImage ? req.files.adharImage[0].path : null;
@@ -644,7 +658,17 @@ exports.getEmployeeById = async (req, res) => {
     const { id } = req.params;
     const employee = await Employee.findById(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
-    res.json(employee);
+    // Manually attach company data since company field is stored as plain String
+    let empObj = employee.toObject();
+    if (empObj.company) {
+      try {
+        const companyData = await Company.findById(empObj.company).select('businessName businessSubscriptionPlan');
+        if (companyData) {
+          empObj.company = companyData;
+        }
+      } catch (e) { /* keep as string if lookup fails */ }
+    }
+    res.json(empObj);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }
@@ -654,7 +678,17 @@ exports.getEmployeesByCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
     const employees = await Employee.find({ company: companyId });
-    res.json(employees);
+    // Manually attach company data since company field is stored as a plain String
+    let companyData = null;
+    try {
+      companyData = await Company.findById(companyId).select('businessName businessSubscriptionPlan');
+    } catch (e) { /* leave null */ }
+    const result = employees.map(emp => {
+      const obj = emp.toObject();
+      if (companyData) obj.company = companyData;
+      return obj;
+    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }

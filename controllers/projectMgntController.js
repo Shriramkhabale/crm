@@ -1,5 +1,40 @@
 const ProjectMgnt = require('../models/ProjectMgnt');
 const Employee = require('../models/Employee');
+const Notification = require('../models/Notification');
+const mongoose = require('mongoose');
+const { emitToUser } = require('../config/socket');
+
+// Helper: create and emit notifications to a list of employee IDs
+async function notifyTeamMembers(recipientIds, type, title, message, relatedId, assignedByName) {
+  try {
+    const validIds = (recipientIds || []).filter(id => mongoose.Types.ObjectId.isValid(String(id)));
+    if (validIds.length === 0) return;
+    const docs = validIds.map(id => ({
+      recipient: id,
+      type,
+      title,
+      message,
+      relatedId,
+      isRead: false,
+      meta: { assignedByName }
+    }));
+    const created = await Notification.insertMany(docs);
+    created.forEach(n => {
+      emitToUser(n.recipient, 'notification:new', {
+        id: n._id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        unread: true,
+        createdAt: n.createdAt,
+        meta: n.meta,
+        relatedId: n.relatedId
+      });
+    });
+  } catch (err) {
+    console.error('Failed to send project notifications:', err.message);
+  }
+}
 
 // Helper to get company ID from user (unchanged)
 async function getCompanyIdFromUser (user) {
@@ -106,6 +141,18 @@ exports.createProject = async (req, res) => {
 
     await project.save();
 
+    // Notify all assigned team members
+    if (Array.isArray(teamMembers) && teamMembers.length > 0) {
+      await notifyTeamMembers(
+        teamMembers,
+        'project',
+        'New Project Assigned',
+        `You have been added to project: "${title}"`,
+        project._id,
+        req.user?.name || req.user?.email || 'Manager'
+      );
+    }
+
     res.status(201).json({ message: 'ProjectMgnt created successfully', project });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -194,6 +241,7 @@ exports.updateProject = async (req, res) => {
     if (startDate !== undefined) project.startDate = startDate;
     if (dueDate !== undefined) project.dueDate = dueDate;
     if (budget !== undefined) project.budget = budget;
+    const previousTeamMembers = (project.teamMembers || []).map(m => String(m));
     if (teamMembers !== undefined) project.teamMembers = teamMembers;
     if (progress !== undefined) project.progress = progress;
     if (clientName !== undefined) project.clientName = clientName;
@@ -285,6 +333,21 @@ exports.updateProject = async (req, res) => {
     }
 
     await project.save();
+
+    // Notify newly added team members
+    if (teamMembers !== undefined && Array.isArray(teamMembers)) {
+      const newlyAdded = teamMembers.filter(id => !previousTeamMembers.includes(String(id)));
+      if (newlyAdded.length > 0) {
+        await notifyTeamMembers(
+          newlyAdded,
+          'project',
+          'Added to Project',
+          `You have been added to project: "${project.title}"`,
+          project._id,
+          req.user?.name || req.user?.email || 'Manager'
+        );
+      }
+    }
 
     res.json({ message: 'ProjectMgnt updated successfully', project });
   } catch (error) {
