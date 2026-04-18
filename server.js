@@ -46,6 +46,7 @@ const projectCustomStatusRoutes = require('./routes/projectCustomStatusRoutes');
 const superEmployeeRoutes = require('./routes/superEmployeeRoutes');
 const dashboardStatsRoutes = require('./routes/dashboardStatsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const trackingRoutes = require('./routes/trackingRoutes');
 const { startTaskReminderScheduler } = require('./utils/taskReminderScheduler');
 const { setIO } = require('./config/socket');
 
@@ -172,6 +173,7 @@ app.use('/api/advance', advanceRoutes);
 app.use('/api/prjCustomStatus', projectCustomStatusRoutes);
 app.use('/api/super-employees', superEmployeeRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
