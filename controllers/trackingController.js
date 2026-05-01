@@ -52,6 +52,14 @@ exports.saveLog = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Find the most recent log for this employee on this date
+    const latestLog = await TrackingLog.findOne({ employeeId, date }).sort({ timestamp: -1 });
+
+    // Prevent consecutive identical events (e.g., double punch-in or double punch-out)
+    if (latestLog && latestLog.event === event) {
+      return res.status(200).json({ message: `${event} already recorded as the latest action`, data: latestLog });
+    }
+
     const newLog = new TrackingLog({
       employeeId,
       companyId,
