@@ -47,6 +47,7 @@ const superEmployeeRoutes = require('./routes/superEmployeeRoutes');
 const dashboardStatsRoutes = require('./routes/dashboardStatsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const trackingRoutes = require('./routes/trackingRoutes');
+const whatsappMessageRoutes = require('./routes/whatsappMessageRoutes');
 const { startTaskReminderScheduler } = require('./utils/taskReminderScheduler');
 const { setIO } = require('./config/socket');
 
@@ -174,6 +175,7 @@ app.use('/api/prjCustomStatus', projectCustomStatusRoutes);
 app.use('/api/super-employees', superEmployeeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/whatsapp-messages', whatsappMessageRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;

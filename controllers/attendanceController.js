@@ -16,7 +16,7 @@ exports.markAttendanceWithImages = async (req, res) => {
   try {
     const company = await getCompanyIdFromUser(req.user);
 
-    const {
+    let {
       employee,
       date,
       inTime,
@@ -25,6 +25,10 @@ exports.markAttendanceWithImages = async (req, res) => {
       outLocation,
       status,
     } = req.body;
+
+    // Clean up FormData string conversions
+    if (outTime === 'undefined' || outTime === 'null' || outTime === '') outTime = null;
+    if (inTime === 'undefined' || inTime === 'null' || inTime === '') inTime = null;
 
 
     console.log("req.body", req.body);
@@ -185,6 +189,7 @@ exports.markAttendanceWithImages = async (req, res) => {
       attendance.workingTime = totalWorkingMinutes;
     }
 
+    attendance.markModified('punches');
     await attendance.save();
 
     res.status(200).json({ message: 'Attendance marked successfully', attendance });
