@@ -49,18 +49,23 @@ exports.markAttendanceWithImages = async (req, res) => {
     const inPhotoUrl = req.files?.inPhoto?.[0]?.path || null;
     const outPhotoUrl = req.files?.outPhoto?.[0]?.path || null;
 
-    // Calculate workingTime if outTime is provided
-    let workingTime = null;
-    if (outTime) {
-      const inDate = new Date(inTime);
-      const outDate = new Date(outTime);
-      workingTime = Math.max(0, (outDate - inDate) / 1000 / 60); // minutes
-    }
+    // Find existing attendance record for employee and date
+    let attendance = await Attendance.findOne({
+      company,
+      employee,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    });
 
-    // Upsert attendance record for employee and date
-    const attendance = await Attendance.findOneAndUpdate(
-      { company, employee, date: new Date(date).setHours(0, 0, 0, 0) },
-      {
+    if (!attendance) {
+      // First punch in of the day
+      let initialWorkingTime = 0;
+      if (outTime) {
+        const inDate = new Date(inTime);
+        const outDate = new Date(outTime);
+        initialWorkingTime = Math.max(0, (outDate - inDate) / 1000 / 60); // minutes
+      }
+
+      attendance = new Attendance({
         company,
         employee,
         date: new Date(date).setHours(0, 0, 0, 0),
@@ -70,11 +75,117 @@ exports.markAttendanceWithImages = async (req, res) => {
         outTime,
         outLocation,
         outPhoto: outPhotoUrl,
-        workingTime,
+        workingTime: initialWorkingTime,
         status: status || 'Present',
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+        punches: [{
+          inTime,
+          inLocation,
+          inPhoto: inPhotoUrl,
+          outTime,
+          outLocation,
+          outPhoto: outPhotoUrl
+        }]
+      });
+    } else {
+      // Handle multiple punches
+      let lastPunch = attendance.punches && attendance.punches.length > 0 
+        ? attendance.punches[attendance.punches.length - 1] 
+        : null;
+
+      if (outTime) {
+        // We are punching out (or updating an out punch)
+        if (lastPunch && !lastPunch.outTime) {
+          // Normal punch out for the most recent punch in
+          lastPunch.outTime = outTime;
+          lastPunch.outLocation = outLocation;
+          if (outPhotoUrl) lastPunch.outPhoto = outPhotoUrl;
+        } else if (lastPunch && lastPunch.outTime) {
+          // The last punch is already completed.
+          // Are we updating the last punch out, or adding a new full punch record?
+          if (new Date(inTime).getTime() !== new Date(lastPunch.inTime).getTime()) {
+            // New complete punch (has both in and out)
+            attendance.punches.push({
+              inTime,
+              inLocation,
+              inPhoto: inPhotoUrl,
+              outTime,
+              outLocation,
+              outPhoto: outPhotoUrl
+            });
+          } else {
+            // Updating the existing last punch out
+            lastPunch.outTime = outTime;
+            lastPunch.outLocation = outLocation;
+            if (outPhotoUrl) lastPunch.outPhoto = outPhotoUrl;
+          }
+        } else if (!lastPunch) {
+          // Legacy record with no punches array, initialize it
+          attendance.punches = [{
+            inTime: attendance.inTime,
+            inLocation: attendance.inLocation,
+            inPhoto: attendance.inPhoto,
+            outTime,
+            outLocation,
+            outPhoto: outPhotoUrl
+          }];
+        }
+      } else {
+        // We are punching in
+        if (lastPunch && lastPunch.outTime) {
+          // The previous punch was completed, so this is a NEW punch in!
+          attendance.punches.push({
+            inTime,
+            inLocation,
+            inPhoto: inPhotoUrl,
+            outTime: null,
+            outLocation: null,
+            outPhoto: null
+          });
+        } else if (lastPunch && !lastPunch.outTime) {
+          // Updating the current punch in (e.g., photo updated or location refinement)
+          lastPunch.inTime = inTime;
+          lastPunch.inLocation = inLocation;
+          if (inPhotoUrl) lastPunch.inPhoto = inPhotoUrl;
+        } else {
+          // Legacy record initialization
+          attendance.punches = [{
+            inTime,
+            inLocation,
+            inPhoto: inPhotoUrl,
+            outTime: null,
+            outLocation: null,
+            outPhoto: null
+          }];
+        }
+      }
+
+      // Update main document fields
+      // For outTime and outLocation, always use the latest provided (to keep top-level fields updated)
+      if (outTime) attendance.outTime = outTime;
+      if (outLocation) attendance.outLocation = outLocation;
+      if (outPhotoUrl) attendance.outPhoto = outPhotoUrl;
+      if (status) attendance.status = status;
+
+      // Recalculate total working time based on all completed punches
+      let totalWorkingMinutes = 0;
+      if (attendance.punches && attendance.punches.length > 0) {
+        attendance.punches.forEach(p => {
+          if (p.inTime && p.outTime) {
+            const inD = new Date(p.inTime);
+            const outD = new Date(p.outTime);
+            totalWorkingMinutes += Math.max(0, (outD - inD) / 1000 / 60);
+          }
+        });
+      } else if (attendance.inTime && attendance.outTime) {
+        // Fallback for legacy calculation
+        const inD = new Date(attendance.inTime);
+        const outD = new Date(attendance.outTime);
+        totalWorkingMinutes = Math.max(0, (outD - inD) / 1000 / 60);
+      }
+      attendance.workingTime = totalWorkingMinutes;
+    }
+
+    await attendance.save();
 
     res.status(200).json({ message: 'Attendance marked successfully', attendance });
   } catch (error) {
@@ -250,7 +361,8 @@ exports.addManualAttendance = async (req, res) => {
       status,
       inLocation: inLocation || 'Manual Entry',
       outLocation: outLocation || 'Manual Entry',
-      workingTime
+      workingTime,
+      punches: []
     };
 
     // Add times if provided
@@ -259,6 +371,16 @@ exports.addManualAttendance = async (req, res) => {
     }
     if (outTime) {
       attendanceData.outTime = new Date(outTime);
+    }
+    
+    // Initialize punches array for manual entry
+    if (inTime || outTime) {
+      attendanceData.punches.push({
+        inTime: inTime ? new Date(inTime) : null,
+        inLocation: inLocation || 'Manual Entry',
+        outTime: outTime ? new Date(outTime) : null,
+        outLocation: outLocation || 'Manual Entry'
+      });
     }
 
     // Check if attendance already exists for this date
@@ -355,11 +477,21 @@ exports.addBulkManualAttendance = async (req, res) => {
           status,
           inLocation: inLocation || 'Manual Entry',
           outLocation: outLocation || 'Manual Entry',
-          workingTime
+          workingTime,
+          punches: []
         };
 
         if (inTime) attendanceData.inTime = new Date(inTime);
         if (outTime) attendanceData.outTime = new Date(outTime);
+
+        if (inTime || outTime) {
+          attendanceData.punches.push({
+            inTime: inTime ? new Date(inTime) : null,
+            inLocation: inLocation || 'Manual Entry',
+            outTime: outTime ? new Date(outTime) : null,
+            outLocation: outLocation || 'Manual Entry'
+          });
+        }
 
         // Check if attendance already exists
         const existingAttendance = await Attendance.findOne({
@@ -460,6 +592,24 @@ exports.updateManualAttendance = async (req, res) => {
       attendance.workingTime = Math.max(0, (outDate - inDate) / 1000 / 60);
     } else {
       attendance.workingTime = null;
+    }
+
+    // Sync punches array for manual update
+    if (attendance.inTime || attendance.outTime) {
+      if (!attendance.punches || attendance.punches.length === 0) {
+        attendance.punches = [{
+          inTime: attendance.inTime,
+          inLocation: attendance.inLocation,
+          outTime: attendance.outTime,
+          outLocation: attendance.outLocation
+        }];
+      } else {
+        // Just update the first punch for manual entry simplicity
+        attendance.punches[0].inTime = attendance.inTime;
+        attendance.punches[0].outTime = attendance.outTime;
+        if (attendance.inLocation) attendance.punches[0].inLocation = attendance.inLocation;
+        if (attendance.outLocation) attendance.punches[0].outLocation = attendance.outLocation;
+      }
     }
 
     await attendance.save();

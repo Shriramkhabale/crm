@@ -13,6 +13,15 @@ const attendanceSchema = new mongoose.Schema({
   outPhoto: { type: String },
   workingTime: { type: Number }, 
   status: { type: String },
+  // NEW: For multiple punches in a day
+  punches: [{
+    inTime: { type: Date },
+    inLocation: { type: String },
+    inPhoto: { type: String },
+    outTime: { type: Date },
+    outLocation: { type: String },
+    outPhoto: { type: String },
+  }],
    // NEW: For leave-linked attendance
   leaveType: { type: String },
   leaveRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Leave' },  
