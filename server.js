@@ -175,7 +175,7 @@ app.use('/api/prjCustomStatus', projectCustomStatusRoutes);
 app.use('/api/super-employees', superEmployeeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tracking', trackingRoutes);
-app.use('/api/whatsapp-messages', whatsappMessageRoutes);
+app.use('/api/whatsapp-msg', whatsappMessageRoutes);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
