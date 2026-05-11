@@ -17,6 +17,32 @@ router.post(
   attendanceController.markAttendanceWithImages
 );
 
+// Punch In - for clocking in (start of day or after breaks)
+router.post(
+  '/punch-in',
+  authMiddleware,
+  upload.fields([
+    { name: 'inPhoto', maxCount: 1 }
+  ]),
+  attendanceController.punchIn
+);
+
+// Punch Out - for clocking out (breaks or end of day)
+router.post(
+  '/punch-out',
+  authMiddleware,
+  upload.fields([
+    { name: 'outPhoto', maxCount: 1 }
+  ]),
+  attendanceController.punchOut
+);
+
+// Get punch status for employee on specific date
+router.get('/punch-status/:employee/:date', authMiddleware, attendanceController.getPunchStatus);
+
+// Get all punches for employee on specific date
+router.get('/punches/:employee/:date', authMiddleware, attendanceController.getPunches);
+
 // Get attendance records (with optional filters)
 router.get('/', authMiddleware, attendanceController.getAttendanceRecords);
 

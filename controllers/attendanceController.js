@@ -11,6 +11,174 @@ async function getCompanyIdFromUser(user) {
   }
 }
 
+// Punch In - for clocking in (breaks, lunch, etc.)
+exports.punchIn = async (req, res) => {
+  try {
+    const company = await getCompanyIdFromUser(req.user);
+
+    let {
+      employee,
+      date,
+      inTime,
+      inLocation,
+    } = req.body;
+
+    if (!employee || !date || !inTime) {
+      return res.status(400).json({ message: 'employee, date, and inTime are required' });
+    }
+
+    // Validate employee belongs to company
+    const emp = await Employee.findOne({ _id: employee, company });
+    if (!emp) {
+      return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    // Get uploaded image URL
+    const inPhotoUrl = req.files?.inPhoto?.[0]?.path || null;
+
+    // Find existing attendance record for employee and date
+    let attendance = await Attendance.findOne({
+      company,
+      employee,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    });
+
+    if (!attendance) {
+      // First punch in of the day
+      attendance = new Attendance({
+        company,
+        employee,
+        date: new Date(date).setHours(0, 0, 0, 0),
+        inTime,
+        inLocation,
+        inPhoto: inPhotoUrl,
+        status: 'Present',
+        punches: [{
+          inTime,
+          inLocation,
+          inPhoto: inPhotoUrl,
+          outTime: null,
+          outLocation: null,
+          outPhoto: null
+        }]
+      });
+    } else {
+      // Handle multiple punches - add new punch in
+      let lastPunch = attendance.punches && attendance.punches.length > 0
+        ? attendance.punches[attendance.punches.length - 1]
+        : null;
+
+      if (lastPunch && !lastPunch.outTime) {
+        // Update existing incomplete punch in
+        lastPunch.inTime = inTime;
+        lastPunch.inLocation = inLocation;
+        if (inPhotoUrl) lastPunch.inPhoto = inPhotoUrl;
+      } else {
+        // Add new punch in (previous punch was completed)
+        attendance.punches.push({
+          inTime,
+          inLocation,
+          inPhoto: inPhotoUrl,
+          outTime: null,
+          outLocation: null,
+          outPhoto: null
+        });
+      }
+
+      // Update main document fields
+      attendance.inTime = inTime;
+      attendance.inLocation = inLocation;
+      if (inPhotoUrl) attendance.inPhoto = inPhotoUrl;
+    }
+
+    attendance.markModified('punches');
+    await attendance.save();
+
+    res.status(200).json({ message: 'Punched in successfully', attendance });
+  } catch (error) {
+    console.error('Punch in error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Punch Out - for clocking out (breaks, lunch, end of day)
+exports.punchOut = async (req, res) => {
+  try {
+    const company = await getCompanyIdFromUser(req.user);
+
+    let {
+      employee,
+      date,
+      outTime,
+      outLocation,
+    } = req.body;
+
+    if (!employee || !date || !outTime) {
+      return res.status(400).json({ message: 'employee, date, and outTime are required' });
+    }
+
+    // Validate employee belongs to company
+    const emp = await Employee.findOne({ _id: employee, company });
+    if (!emp) {
+      return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    // Get uploaded image URL
+    const outPhotoUrl = req.files?.outPhoto?.[0]?.path || null;
+
+    // Find existing attendance record for employee and date
+    const attendance = await Attendance.findOne({
+      company,
+      employee,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    });
+
+    if (!attendance) {
+      return res.status(400).json({ message: 'No attendance record found for today. Please punch in first.' });
+    }
+
+    // Handle punch out - update the last incomplete punch
+    let lastPunch = attendance.punches && attendance.punches.length > 0
+      ? attendance.punches[attendance.punches.length - 1]
+      : null;
+
+    if (!lastPunch || lastPunch.outTime) {
+      return res.status(400).json({ message: 'No active punch-in found to punch out from.' });
+    }
+
+    // Update the last punch with out time
+    lastPunch.outTime = outTime;
+    lastPunch.outLocation = outLocation;
+    if (outPhotoUrl) lastPunch.outPhoto = outPhotoUrl;
+
+    // Update main document fields
+    attendance.outTime = outTime;
+    attendance.outLocation = outLocation;
+    if (outPhotoUrl) attendance.outPhoto = outPhotoUrl;
+
+    // Recalculate total working time based on all completed punches
+    let totalWorkingMinutes = 0;
+    if (attendance.punches && attendance.punches.length > 0) {
+      attendance.punches.forEach(p => {
+        if (p.inTime && p.outTime) {
+          const inD = new Date(p.inTime);
+          const outD = new Date(p.outTime);
+          totalWorkingMinutes += Math.max(0, (outD - inD) / 1000 / 60);
+        }
+      });
+    }
+    attendance.workingTime = totalWorkingMinutes;
+
+    attendance.markModified('punches');
+    await attendance.save();
+
+    res.status(200).json({ message: 'Punched out successfully', attendance });
+  } catch (error) {
+    console.error('Punch out error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Mark attendance with image upload support
 exports.markAttendanceWithImages = async (req, res) => {
   try {
@@ -267,6 +435,24 @@ exports.getAttendanceRecords = async (req, res) => {
   }
 };
 
+// Delete attendance record by ID
+exports.deleteAttendance = async (req, res) => {
+  try {
+    const company = await getCompanyIdFromUser(req.user);
+    const { id } = req.params;
+
+    const attendance = await Attendance.findOneAndDelete({ _id: id, company });
+    if (!attendance) {
+      return res.status(404).json({ message: 'Attendance record not found or not authorized' });
+    }
+
+    res.json({ message: 'Attendance record deleted successfully' });
+  } catch (error) {
+    console.error('Delete attendance error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Get attendance record by ID
 exports.getAttendanceById = async (req, res) => {
   try {
@@ -283,27 +469,6 @@ exports.getAttendanceById = async (req, res) => {
     res.json({ attendance });
   } catch (error) {
     console.error('Get attendance by ID error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-
-
-
-// Delete attendance record by ID
-exports.deleteAttendance = async (req, res) => {
-  try {
-    const company = await getCompanyIdFromUser(req.user);
-    const { id } = req.params;
-
-    const attendance = await Attendance.findOneAndDelete({ _id: id, company });
-    if (!attendance) {
-      return res.status(404).json({ message: 'Attendance record not found or not authorized' });
-    }
-
-    res.json({ message: 'Attendance record deleted successfully' });
-  } catch (error) {
-    console.error('Delete attendance error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
