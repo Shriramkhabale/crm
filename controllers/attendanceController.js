@@ -435,6 +435,99 @@ exports.getAttendanceRecords = async (req, res) => {
   }
 };
 
+// Get punch status for an employee on a specific date
+exports.getPunchStatus = async (req, res) => {
+  try {
+    const company = await getCompanyIdFromUser(req.user);
+    const { employee, date } = req.params;
+
+    const emp = await Employee.findOne({ _id: employee, company });
+    if (!emp) {
+      return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    const attendance = await Attendance.findOne({
+      company,
+      employee,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    });
+
+    if (!attendance) {
+      return res.json({
+        status: 'not_punched_in',
+        message: 'No attendance record found for this date',
+        isCurrentlyIn: false,
+        lastPunch: null,
+        attendance: null
+      });
+    }
+
+    const lastPunch = attendance.punches && attendance.punches.length > 0
+      ? attendance.punches[attendance.punches.length - 1]
+      : null;
+
+    const isCurrentlyIn = lastPunch && !lastPunch.outTime;
+
+    res.json({
+      status: isCurrentlyIn ? 'punched_in' : 'punched_out',
+      message: isCurrentlyIn ? 'Currently punched in' : 'Currently punched out',
+      isCurrentlyIn,
+      lastPunch,
+      attendance: {
+        id: attendance._id,
+        date: attendance.date,
+        totalPunches: attendance.punches ? attendance.punches.length : 0,
+        workingTime: attendance.workingTime
+      }
+    });
+  } catch (error) {
+    console.error('Get punch status error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get all punches for an employee on a specific date
+exports.getPunches = async (req, res) => {
+  try {
+    const company = await getCompanyIdFromUser(req.user);
+    const { employee, date } = req.params;
+
+    const emp = await Employee.findOne({ _id: employee, company });
+    if (!emp) {
+      return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    const attendance = await Attendance.findOne({
+      company,
+      employee,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    }).populate('employee', 'firstName lastName name teamMemberName');
+
+    if (!attendance) {
+      return res.json({
+        message: 'No attendance record found for this date',
+        punches: [],
+        attendance: null
+      });
+    }
+
+    res.json({
+      message: 'Punches retrieved successfully',
+      attendance: {
+        id: attendance._id,
+        date: attendance.date,
+        status: attendance.status,
+        workingTime: attendance.workingTime,
+        employee: attendance.employee
+      },
+      punches: attendance.punches || []
+    });
+  } catch (error) {
+    console.error('Get punches error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Delete attendance record by ID
 exports.deleteAttendance = async (req, res) => {
   try {
