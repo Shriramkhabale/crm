@@ -73,6 +73,7 @@ exports.createEmployee = async (req, res) => {
       address,
       accessPermissions,
       qrCode,
+      locationTracking,
       documentTypes,  // Expect array (or string for single) from frontend for CREATE
       pfEnabled = false,  // From frontend
       esicEnabled = false,
@@ -269,7 +270,8 @@ exports.createEmployee = async (req, res) => {
       panImage,
       profileImage,
       documents: dynamicDocuments,
-      qrCode
+      qrCode,
+      locationTracking: locationTracking === 'true' || locationTracking === true
     });
 
     console.log('💾 CREATE: Saving employee with docs count:', dynamicDocuments.length);
@@ -317,8 +319,7 @@ exports.updateEmployee = async (req, res) => {
       weeklyHoliday,
       address,
       accessPermissions,
-      qrCode,
-      newDocumentTypes,  // Expect array (or string for single) from frontend for new docs
+      qrCode,      locationTracking,      newDocumentTypes,  // Expect array (or string for single) from frontend for new docs
       removeDocuments,  // Expect array (or string for single) of types to remove
       pfEnabled = false,  // From frontend
       esicEnabled = false,
@@ -399,6 +400,9 @@ exports.updateEmployee = async (req, res) => {
     if (userUpi !== undefined) employee.userUpi = userUpi;
     if (address !== undefined) employee.address = address;
     if (qrCode !== undefined) employee.qrCode = qrCode;
+    if (locationTracking !== undefined) {
+      employee.locationTracking = locationTracking === 'true' || locationTracking === true;
+    }
 
     // PF/ESIC: Only set percentages if enabled
     // if (pfEnabled === 'true' || pfEnabled === true) {
