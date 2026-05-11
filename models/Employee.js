@@ -119,7 +119,8 @@ const employeeSchema = new mongoose.Schema({
    'customer_support', 
    'com_tickets', 
    'sup_tickets', 
-   'employee_performance'
+   'employee_performance',
+   'location_access'
   ],
 },
 
