@@ -9,6 +9,9 @@ router.post('/company/:companyId', protect, whatsappMessageController.createTemp
 // Get all WhatsApp message templates for a company
 router.get('/company/:companyId', protect, whatsappMessageController.getTemplatesByCompany);
 
+// Reorder templates for a company (drag-and-drop order)
+router.put('/reorder/company/:companyId', protect, whatsappMessageController.reorderTemplates);
+
 // Update a template by ID
 router.put('/:id', protect, whatsappMessageController.updateTemplate);
 

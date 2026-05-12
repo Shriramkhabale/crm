@@ -4,10 +4,18 @@ const WhatsappMessage = require('../models/WhatsappMessage');
 exports.createTemplate = async (req, res) => {
   try {
     const { companyId } = req.params;
-    const { title, message, location } = req.body;
+    const { title, message, location, sequence } = req.body;
 
     if (!title || !message) {
       return res.status(400).json({ message: 'Title and message are required' });
+    }
+
+    let sequenceValue = sequence;
+    if (sequenceValue === undefined || sequenceValue === null) {
+      const lastTemplate = await WhatsappMessage.findOne({ company: companyId, title: { $exists: true } })
+        .sort({ sequence: -1, createdAt: -1 })
+        .select('sequence');
+      sequenceValue = lastTemplate ? lastTemplate.sequence + 1 : 1;
     }
 
     const template = new WhatsappMessage({
@@ -15,6 +23,7 @@ exports.createTemplate = async (req, res) => {
       title,
       message,
       location,
+      sequence: sequenceValue,
       messageType: 'template'
     });
 
@@ -31,7 +40,8 @@ exports.getTemplatesByCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
     
-    const templates = await WhatsappMessage.find({ company: companyId, title: { $exists: true } }).sort({ createdAt: -1 });
+    const templates = await WhatsappMessage.find({ company: companyId, title: { $exists: true } })
+      .sort({ sequence: 1, createdAt: -1 });
     res.status(200).json(templates);
   } catch (error) {
     console.error('Error fetching templates:', error);
@@ -43,7 +53,7 @@ exports.getTemplatesByCompany = async (req, res) => {
 exports.updateTemplate = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, message, location } = req.body;
+    const { title, message, location, sequence } = req.body;
 
     const template = await WhatsappMessage.findById(id);
     if (!template) {
@@ -53,11 +63,44 @@ exports.updateTemplate = async (req, res) => {
     if (title) template.title = title;
     if (message) template.message = message;
     if (location !== undefined) template.location = location;
+    if (sequence !== undefined && sequence !== null) template.sequence = sequence;
 
     await template.save();
     res.status(200).json({ message: 'Template updated successfully', template });
   } catch (error) {
     console.error('Error updating template:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Bulk reorder templates by supplying an ordered list of template IDs or objects
+exports.reorderTemplates = async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const { order } = req.body;
+
+    if (!Array.isArray(order) || order.length === 0) {
+      return res.status(400).json({ message: 'Order must be a non-empty array' });
+    }
+
+    const operations = order.map((item, index) => {
+      const templateId = typeof item === 'object' && item._id ? item._id : item;
+      return {
+        updateOne: {
+          filter: { _id: templateId, company: companyId },
+          update: { $set: { sequence: index + 1 } }
+        }
+      };
+    });
+
+    await WhatsappMessage.bulkWrite(operations);
+
+    const templates = await WhatsappMessage.find({ company: companyId, title: { $exists: true } })
+      .sort({ sequence: 1, createdAt: -1 });
+
+    res.status(200).json({ message: 'Template order updated successfully', templates });
+  } catch (error) {
+    console.error('Error reordering templates:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

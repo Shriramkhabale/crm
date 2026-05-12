@@ -5,6 +5,7 @@ const whatsappMessageSchema = new mongoose.Schema({
   title: { type: String }, // Template Title
   message: { type: String, required: true }, // Message Content
   location: { type: String }, // Location (Optional)
+  sequence: { type: Number, default: 0 }, // Order for drag-and-drop templates
   
   // Existing fields for backward compatibility or sent messages
   leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
