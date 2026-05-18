@@ -69,7 +69,8 @@ const allowedOrigins = [
   'https://digitalschool.cloud',
   'https://udaanjobs.com',
   'https://softwarecompanyinsangli.online',
-  'https://softwarecompanyinsangli.com'
+  'https://softwarecompanyinsangli.com',
+  'https://oneclickcrm.in'
 ];
 
 app.use(cors({
