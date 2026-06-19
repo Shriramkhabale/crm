@@ -70,7 +70,8 @@ const allowedOrigins = [
   'https://udaanjobs.com',
   'https://softwarecompanyinsangli.online',
   'https://softwarecompanyinsangli.com',
-  'https://oneclickcrm.in'
+  'https://oneclickcrm.in',
+  'https://apk.oneclickcrm.in'
 ];
 
 app.use(cors({
