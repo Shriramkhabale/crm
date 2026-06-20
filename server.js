@@ -63,38 +63,21 @@ const server = http.createServer(app);
 connectDB();
 
 const allowedOrigins = [
-// CORS Configuration - dynamic origin check to support subdomains and localhost
-const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:3002',
-  'http://localhost:3003',
+  'https://digitalschool.cloud',
+  'https://udaanjobs.com',
+  'https://softwarecompanyinsangli.online',
   'https://softwarecompanyinsangli.com',
   'https://oneclickcrm.in',
   'https://apk.oneclickcrm.in'
 ];
 
-const corsOptions = {
+app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (mobile apps, curl, etc.)
+    console.log('CORS Origin received:', origin);  // Add this log
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
-    return callback(new Error('CORS policy: Origin not allowed'), false);
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-auth', 'x-company-id', 'x-employee-id'],
-  credentials: true
-};
-
-// Middleware
-app.use(cors(corsOptions));
-// enable preflight for all routes
-app.options('*', cors(corsOptions));
-// small debug logger to print request origin (remove in production)
-app.use((req, res, next) => {
-  console.log('Request Origin:', req.headers.origin || 'no-origin');
-  next();
-});
 
     if (allowedOrigins.includes(origin)) {
       console.log('CORS allowed for origin:', origin);  // Add this log
