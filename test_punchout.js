@@ -49,7 +49,7 @@ async function runTests() {
 
   // Helper to generate mock res object
   function mockRes(callback) {
-    return { 
+    return {
       statusCode: 200,
       status: function(code) {
         this.statusCode = code;
