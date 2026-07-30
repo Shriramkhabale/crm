@@ -1,5 +1,22 @@
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
+const Company = require('../models/Company');
+const mongoose = require('mongoose');
+
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // metres
+  const p1 = lat1 * Math.PI/180;
+  const p2 = lat2 * Math.PI/180;
+  const dp = (lat2-lat1) * Math.PI/180;
+  const dl = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(dp/2) * Math.sin(dp/2) +
+            Math.cos(p1) * Math.cos(p2) *
+            Math.sin(dl/2) * Math.sin(dl/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c; // in metres
+}
 
 async function getCompanyIdFromUser(user) {
   if (user.role === 'company') {
@@ -21,6 +38,8 @@ exports.punchIn = async (req, res) => {
       date,
       inTime,
       inLocation,
+      latitude,
+      longitude,
     } = req.body;
 
     if (!employee || !date || !inTime) {
@@ -31,6 +50,16 @@ exports.punchIn = async (req, res) => {
     const emp = await Employee.findOne({ _id: employee, company });
     if (!emp) {
       return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    // Check location distance if applicable (skip for field workers)
+    const companyObj = await Company.findById(company);
+    if (!emp.isFieldWork && companyObj && companyObj.latitude && companyObj.longitude && latitude && longitude) {
+      const distance = getDistance(companyObj.latitude, companyObj.longitude, parseFloat(latitude), parseFloat(longitude));
+      const radius = companyObj.attendanceRadius || 100;
+      if (distance > radius) {
+        return res.status(400).json({ message: `You are too far from the company location. Must be within ${radius} meters. Your distance: ${Math.round(distance)}m.` });
+      }
     }
 
     // Get uploaded image URL
@@ -111,71 +140,247 @@ exports.punchOut = async (req, res) => {
       date,
       outTime,
       outLocation,
+      latitude,
+      longitude,
+      isAutoPunchOut,
+      punchOutSource,
+      locationFile,
+      locationFileUrl,
+      locationUrl,
+      locationsLink,
+      attendanceLink,
+      cloudinaryLink
     } = req.body;
 
+    const isAuto = isAutoPunchOut === true || isAutoPunchOut === 'true';
+
+    // 4. Use explicit errors; do not use ambiguous 400/404 responses
     if (!employee || !date || !outTime) {
-      return res.status(400).json({ message: 'employee, date, and outTime are required' });
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PUNCH_OUT_DATA",
+        message: "employee, date, and outTime are required."
+      });
     }
 
-    // Validate employee belongs to company
-    const emp = await Employee.findOne({ _id: employee, company });
+    if (!mongoose.Types.ObjectId.isValid(employee)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PUNCH_OUT_DATA",
+        message: "Invalid employee ID format."
+      });
+    }
+
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PUNCH_OUT_DATA",
+        message: "Invalid date format."
+      });
+    }
+
+    const parsedOutTime = new Date(outTime);
+    if (isNaN(parsedOutTime.getTime())) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PUNCH_OUT_DATA",
+        message: "Invalid outTime format."
+      });
+    }
+
+    // 404 EMPLOYEE_NOT_FOUND
+    const emp = await Employee.findById(employee);
     if (!emp) {
-      return res.status(400).json({ message: 'Employee not found in your company' });
+      return res.status(404).json({
+        success: false,
+        code: "EMPLOYEE_NOT_FOUND",
+        message: "Employee not found."
+      });
+    }
+
+    // Authorization check
+    if (emp.company.toString() !== company) {
+      return res.status(403).json({
+        success: false,
+        code: "UNAUTHORIZED",
+        message: "Employee does not belong to your company."
+      });
+    }
+
+    const userRole = (req.user.role || '').toLowerCase();
+    if (userRole === 'employee' && req.user.id !== employee) {
+      return res.status(403).json({
+        success: false,
+        code: "UNAUTHORIZED",
+        message: "You are not authorized to punch out for another employee."
+      });
+    }
+
+    // Check location distance if applicable (skip for field workers and automatic punch-outs)
+    const companyObj = await Company.findById(company);
+    if (!isAuto && !emp.isFieldWork && companyObj && companyObj.latitude && companyObj.longitude && latitude && longitude) {
+      const distance = getDistance(companyObj.latitude, companyObj.longitude, parseFloat(latitude), parseFloat(longitude));
+      const radius = companyObj.attendanceRadius || 100;
+      if (distance > radius) {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PUNCH_OUT_DATA",
+          message: `You are too far from the company location. Must be within ${radius} meters. Your distance: ${Math.round(distance)}m.`
+        });
+      }
     }
 
     // Get uploaded image URL
     const outPhotoUrl = req.files?.outPhoto?.[0]?.path || null;
 
+    // 1. Keep manual punch-out strict
+    if (!isAuto && !outPhotoUrl) {
+      return res.status(400).json({
+        success: false,
+        code: "OUT_PHOTO_REQUIRED",
+        message: "A punch-out selfie is required for manual punch-out."
+      });
+    }
+
+    // Normalize date to start of the day
+    const normalizedDate = new Date(parsedDate.setHours(0, 0, 0, 0));
+
     // Find existing attendance record for employee and date
     const attendance = await Attendance.findOne({
       company,
       employee,
-      date: new Date(date).setHours(0, 0, 0, 0)
+      date: normalizedDate
     });
 
+    // 404 ATTENDANCE_NOT_FOUND
     if (!attendance) {
-      return res.status(400).json({ message: 'No attendance record found for today. Please punch in first.' });
+      return res.status(404).json({
+        success: false,
+        code: "ATTENDANCE_NOT_FOUND",
+        message: "No attendance record found for the supplied date."
+      });
     }
 
-    // Handle punch out - update the last incomplete punch
-    let lastPunch = attendance.punches && attendance.punches.length > 0
-      ? attendance.punches[attendance.punches.length - 1]
-      : null;
-
-    if (!lastPunch || lastPunch.outTime) {
-      return res.status(400).json({ message: 'No active punch-in found to punch out from.' });
+    // 409 NO_OPEN_ATTENDANCE_SESSION
+    if (!attendance.punches || attendance.punches.length === 0) {
+      return res.status(409).json({
+        success: false,
+        code: "NO_OPEN_ATTENDANCE_SESSION",
+        message: "No open attendance session found to punch out from."
+      });
     }
 
-    // Update the last punch with out time
-    lastPunch.outTime = outTime;
-    lastPunch.outLocation = outLocation;
-    if (outPhotoUrl) lastPunch.outPhoto = outPhotoUrl;
+    // Find the latest OPEN punch (outTime is null) – searches from the end
+    // so employees with multiple punch-in/out pairs in one day are handled correctly.
+    let openPunchIndex = -1;
+    for (let i = attendance.punches.length - 1; i >= 0; i--) {
+      if (!attendance.punches[i].outTime) {
+        openPunchIndex = i;
+        break;
+      }
+    }
 
-    // Update main document fields
-    attendance.outTime = outTime;
-    attendance.outLocation = outLocation;
-    if (outPhotoUrl) attendance.outPhoto = outPhotoUrl;
+    const isSessionClosed = openPunchIndex === -1;
 
-    // Recalculate total working time based on all completed punches
-    let totalWorkingMinutes = 0;
-    if (attendance.punches && attendance.punches.length > 0) {
-      attendance.punches.forEach(p => {
-        if (p.inTime && p.outTime) {
-          const inD = new Date(p.inTime);
-          const outD = new Date(p.outTime);
-          totalWorkingMinutes += Math.max(0, (outD - inD) / 1000 / 60);
+    // 3. Make the endpoint idempotent
+    if (isSessionClosed) {
+      return res.status(200).json({
+        success: true,
+        message: "Attendance was already punched out.",
+        alreadyPunchedOut: true,
+        attendance: {
+          _id: attendance._id,
+          employee: attendance.employee,
+          date: attendance.date,
+          inTime: attendance.inTime,
+          outTime: attendance.outTime,
+          isAutoPunchOut: attendance.isAutoPunchOut,
+          punchOutSource: attendance.punchOutSource,
+          workingTime: attendance.workingTime,
+          punches: attendance.punches
         }
       });
     }
+
+    // 8. Invalid attendance date/time returns a clear 400 error.
+    const activePunch = attendance.punches[openPunchIndex];
+    const lastPunchInTime = new Date(activePunch.inTime);
+    if (parsedOutTime <= lastPunchInTime) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PUNCH_OUT_DATA",
+        message: "outTime must be after inTime."
+      });
+    }
+
+    // ── Core fix: write punch-out data INTO the punch session, not just the root doc ──
+    activePunch.outTime = parsedOutTime;
+    activePunch.outLocation = outLocation || null;
+
+    if (isAuto) {
+      // Automatic punch-out: no selfie, set audit flags on the punch session
+      activePunch.outPhoto = null;
+      activePunch.isAutoPunchOut = true;
+      activePunch.punchOutSource = punchOutSource || "AUTO_MIDNIGHT";
+      activePunch.outPhotoMissingReason = "AUTO_PUNCH_OUT";
+
+      // Root document audit fields (summary / compatibility)
+      attendance.isAutoPunchOut = true;
+      attendance.autoPunchOut = true;
+      attendance.punchOutSource = punchOutSource || "AUTO_MIDNIGHT";
+      attendance.punchOutType = "automatic";
+      attendance.outPhotoMissingReason = "AUTO_PUNCH_OUT";
+
+      // Save available location file URL
+      const resolvedLocationFile = locationFile || locationFileUrl || locationUrl || locationsLink || attendanceLink || cloudinaryLink || null;
+      if (resolvedLocationFile) attendance.locationFile = resolvedLocationFile;
+      if (locationFile) attendance.locationFile = locationFile;
+      if (locationFileUrl) attendance.locationFileUrl = locationFileUrl;
+      if (locationUrl) attendance.locationUrl = locationUrl;
+      if (locationsLink) attendance.locationsLink = locationsLink;
+      if (attendanceLink) attendance.attendanceLink = attendanceLink;
+      if (cloudinaryLink) attendance.cloudinaryLink = cloudinaryLink;
+    } else {
+      // Manual punch-out: require and store selfie
+      activePunch.outPhoto = outPhotoUrl;
+      activePunch.isAutoPunchOut = false;
+      activePunch.punchOutSource = "MANUAL";
+    }
+
+    // Root document summary fields (kept for backward compatibility)
+    attendance.outTime = parsedOutTime;
+    attendance.outLocation = outLocation || null;
+    if (!isAuto && outPhotoUrl) attendance.outPhoto = outPhotoUrl;
+
+    // Recalculate total working time based on all completed punches
+    let totalWorkingMinutes = 0;
+    attendance.punches.forEach(p => {
+      if (p.inTime && p.outTime) {
+        const inD = new Date(p.inTime);
+        const outD = new Date(p.outTime);
+        totalWorkingMinutes += Math.max(0, (outD - inD) / 1000 / 60);
+      }
+    });
     attendance.workingTime = totalWorkingMinutes;
 
     attendance.markModified('punches');
     await attendance.save();
 
-    res.status(200).json({ message: 'Punched out successfully', attendance });
+    res.status(200).json({
+      success: true,
+      message: isAuto ? "Automatic punch-out completed." : "Punched out successfully.",
+      alreadyPunchedOut: false,
+      attendance
+    });
   } catch (error) {
     console.error('Punch out error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({
+      success: false,
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Server error.",
+      error: error.message
+    });
   }
 };
 
@@ -192,6 +397,8 @@ exports.markAttendanceWithImages = async (req, res) => {
       outTime,
       outLocation,
       status,
+      latitude,
+      longitude,
     } = req.body;
 
     // Clean up FormData string conversions
@@ -215,6 +422,16 @@ exports.markAttendanceWithImages = async (req, res) => {
 
     if (!emp) {
       return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+
+    // Check location distance if applicable (skip for field workers)
+    const companyObj = await Company.findById(company);
+    if (!emp.isFieldWork && companyObj && companyObj.latitude && companyObj.longitude && latitude && longitude) {
+      const distance = getDistance(companyObj.latitude, companyObj.longitude, parseFloat(latitude), parseFloat(longitude));
+      const radius = companyObj.attendanceRadius || 100;
+      if (distance > radius) {
+        return res.status(400).json({ message: `You are too far from the company location. Must be within ${radius} meters. Your distance: ${Math.round(distance)}m.` });
+      }
     }
 
     // Get uploaded image URLs from Cloudinary

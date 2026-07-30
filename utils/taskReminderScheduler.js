@@ -106,6 +106,12 @@ async function sendReminders(slot) {
 }
 
 function startTaskReminderScheduler() {
+  // Guard: Prevent multiple scheduler instances on container restarts
+  if (global.__TASK_REMINDER_STARTED) {
+    console.log('[TaskReminder] Scheduler already running, skipping duplicate initialization');
+    return;
+  }
+
   // Morning  — 9:00 AM  (cron: 0 9 * * *)
   cron.schedule('0 9 * * *', () => sendReminders('morning'), { timezone: 'Asia/Kolkata' });
 
@@ -115,6 +121,7 @@ function startTaskReminderScheduler() {
   // Evening  — 6:00 PM  (cron: 0 18 * * *)
   cron.schedule('0 18 * * *', () => sendReminders('evening'), { timezone: 'Asia/Kolkata' });
 
+  global.__TASK_REMINDER_STARTED = true;
   console.log('[TaskReminder] Scheduler started — reminders at 9:00 AM, 1:00 PM, 6:00 PM IST');
 }
 

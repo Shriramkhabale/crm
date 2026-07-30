@@ -160,7 +160,18 @@ exports.login = async (req, res) => {
           email: user.email,
           role: user.role,
           type: "employee",
-          companyId: company._id
+          companyId: company._id,
+          companyLatitude: company.latitude,
+          companyLattitude: company.latitude, // typo support
+          companyLongitude: company.longitude,
+          companyAttendanceRadius: company.attendanceRadius || 100
+        },
+        company: {
+          _id: company._id,
+          latitude: company.latitude,
+          lattitude: company.latitude, // typo support
+          longitude: company.longitude,
+          attendanceRadius: company.attendanceRadius || 100
         }
       });
     }
@@ -250,7 +261,7 @@ if (user) {
         });
       }
 
-      const token = generateToken({ _id: user._id, role: "branch" });
+      const token = generateToken({ _id: user._id, role: "branch", company: user.company });
       return res.json({
         message: "Login successful",
         token,

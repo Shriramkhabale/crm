@@ -42,9 +42,3 @@ milestoneSchema.index({ company: 1, project: 1 });
 milestoneSchema.index({ dueDate: 1 });
 
 module.exports = mongoose.model('Milestone', milestoneSchema);
-
-// Index for efficient queries
-milestoneSchema.index({ company: 1, project: 1 });
-milestoneSchema.index({ dueDate: 1 });
-
-module.exports = mongoose.model('Milestone', milestoneSchema);  // Note: "Milstone" → "Milestone" for consistency

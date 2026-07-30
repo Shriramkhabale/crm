@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const superadminRoutes = require('./routes/superadminRoutes');
-const franchiseRoutes = require('./routes/franchiseRoutes');
+const franchiseRoutes = require('./routes/franchiseRoutes');                   
 const companyRoutes = require('./routes/companyRoutes');
 const departmentRoutes = require('./routes/departmentRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
@@ -49,6 +49,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const trackingRoutes = require('./routes/trackingRoutes');
 const whatsappMessageRoutes = require('./routes/whatsappMessageRoutes');
 const { startTaskReminderScheduler } = require('./utils/taskReminderScheduler');
+const { startAutoPunchOutScheduler } = require('./utils/autoPunchOutScheduler');
 const { setIO } = require('./config/socket');
 
 const authMiddleware = require('./middleware/authMiddleware');
@@ -71,7 +72,7 @@ const allowedOrigins = [
   'https://softwarecompanyinsangli.online',
   'https://softwarecompanyinsangli.com',
   'https://oneclickcrm.in',
-  'https://apk.oneclickcrm.in'
+  'https://apk.oneclickcrm.in',
 ];
 
 app.use(cors({
@@ -184,6 +185,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   startTaskReminderScheduler();
+  startAutoPunchOutScheduler();   // ← auto punch-out + location tracking stop at midnight
 });
 
 

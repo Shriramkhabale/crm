@@ -74,6 +74,7 @@ exports.createEmployee = async (req, res) => {
       accessPermissions,
       qrCode,
       locationTracking,
+      isFieldWork,
       documentTypes,  // Expect array (or string for single) from frontend for CREATE
       pfEnabled = false,  // From frontend
       esicEnabled = false,
@@ -271,7 +272,8 @@ exports.createEmployee = async (req, res) => {
       profileImage,
       documents: dynamicDocuments,
       qrCode,
-      locationTracking: locationTracking === 'true' || locationTracking === true
+      locationTracking: locationTracking === 'true' || locationTracking === true,
+      isFieldWork: isFieldWork === 'true' || isFieldWork === true
     });
 
     console.log('💾 CREATE: Saving employee with docs count:', dynamicDocuments.length);
@@ -319,7 +321,7 @@ exports.updateEmployee = async (req, res) => {
       weeklyHoliday,
       address,
       accessPermissions,
-      qrCode,      locationTracking,      newDocumentTypes,  // Expect array (or string for single) from frontend for new docs
+      qrCode,      locationTracking,      isFieldWork,      newDocumentTypes,  // Expect array (or string for single) from frontend for new docs
       removeDocuments,  // Expect array (or string for single) of types to remove
       pfEnabled = false,  // From frontend
       esicEnabled = false,
@@ -402,6 +404,9 @@ exports.updateEmployee = async (req, res) => {
     if (qrCode !== undefined) employee.qrCode = qrCode;
     if (locationTracking !== undefined) {
       employee.locationTracking = locationTracking === 'true' || locationTracking === true;
+    }
+    if (isFieldWork !== undefined) {
+      employee.isFieldWork = isFieldWork === 'true' || isFieldWork === true;
     }
 
     // PF/ESIC: Only set percentages if enabled
@@ -666,9 +671,11 @@ exports.getEmployeeById = async (req, res) => {
     let empObj = employee.toObject();
     if (empObj.company) {
       try {
-        const companyData = await Company.findById(empObj.company).select('businessName businessSubscriptionPlan');
+        const companyData = await Company.findById(empObj.company).select('businessName businessSubscriptionPlan latitude longitude attendanceRadius');
         if (companyData) {
-          empObj.company = companyData;
+          const compObj = companyData.toObject();
+          compObj.lattitude = companyData.latitude; // double 't' typo support
+          empObj.company = compObj;
         }
       } catch (e) { /* keep as string if lookup fails */ }
     }
@@ -685,7 +692,11 @@ exports.getEmployeesByCompany = async (req, res) => {
     // Manually attach company data since company field is stored as a plain String
     let companyData = null;
     try {
-      companyData = await Company.findById(companyId).select('businessName businessSubscriptionPlan');
+      const dbCompany = await Company.findById(companyId).select('businessName businessSubscriptionPlan latitude longitude attendanceRadius');
+      if (dbCompany) {
+        companyData = dbCompany.toObject();
+        companyData.lattitude = dbCompany.latitude; // double 't' typo support
+      }
     } catch (e) { /* leave null */ }
     const result = employees.map(emp => {
       const obj = emp.toObject();

@@ -143,6 +143,7 @@ const employeeSchema = new mongoose.Schema({
 
   qrCode: { type: String }, 
   locationTracking: { type: Boolean, default: false },
+  isFieldWork: { type: Boolean, default: false },
 
    // New fields for password reset
   resetPasswordToken: {

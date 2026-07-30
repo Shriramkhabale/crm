@@ -19,6 +19,9 @@ const companySchema = new mongoose.Schema({
   branches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Company' }] ,
   businessLogo: { type: String },
   userLimit: { type: Number, default: 0 },
+  latitude: { type: Number },
+  longitude: { type: Number },
+  attendanceRadius: { type: Number, default: 100 },
    // New fields for password reset
   resetPasswordToken: {
     type: String,  // Hashed token

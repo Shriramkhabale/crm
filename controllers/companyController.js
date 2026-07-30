@@ -126,7 +126,10 @@ exports.createCompanyWithLogo = async (req, res) => {
       businessSubscriptionPlan,
       weeklyHoliday,
       address,
-      franchise
+      franchise,
+      latitude,
+      longitude,
+      attendanceRadius
     } = req.body;
 
     // Parse weeklyHoliday from JSON string to array
@@ -175,7 +178,10 @@ exports.createCompanyWithLogo = async (req, res) => {
       businessSubscriptionPlan,
       weeklyHoliday: weeklyHolidayArr,
       address,
-      businessLogo
+      businessLogo,
+      latitude,
+      longitude,
+      attendanceRadius: attendanceRadius ? Number(attendanceRadius) : 100
     });
 
     await company.save();
@@ -255,20 +261,31 @@ exports.getCompanyById = async (req, res) => {
     
     let query = { _id: id };
     
-    // Add authorization based on role
-    if (req.user.role === 'superadmin') {
+    // Add authorization based on role (case-insensitive)
+    const userRole = (req.user.role || '').toLowerCase();
+    if (userRole === 'superadmin') {
       query.superadmin = req.user.id;
-    } else if (req.user.role === 'super_employee') {
+    } else if (userRole === 'super_employee') {
       if (!req.user.superadmin) {
         return res.status(400).json({ message: 'Super employee has no associated superadmin' });
       }
       query.superadmin = req.user.superadmin;
-    } else if (req.user.role === 'franchise') {
+    } else if (userRole === 'franchise') {
       query.franchise = req.user.id;
-    } else if (req.user.role === 'company') {
+    } else if (userRole === 'company') {
       // Company can view their own record
       if (req.user.id !== id) {
         return res.status(403).json({ message: 'You can only view your own company information' });
+      }
+    } else if (userRole === 'employee') {
+      // Employee can view their own company details
+      if (req.user.companyId !== id) {
+        return res.status(403).json({ message: 'You can only view your own company information' });
+      }
+    } else if (userRole === 'branch') {
+      // Branch can view their own company/branch details
+      if (req.user.companyId !== id && req.user.id !== id) {
+        return res.status(403).json({ message: 'You can only view your own branch/company information' });
       }
     } else {
       return res.status(403).json({ message: 'Unauthorized to view company information' });
@@ -278,7 +295,23 @@ exports.getCompanyById = async (req, res) => {
     if (!company) {
       return res.status(404).json({ message: 'Company not found or access denied' });
     }
-    res.json(company);
+
+    // Format response to support both flat and nested 'company' structure
+    // and include double 't' typo (lattitude) as requested
+    const companyObj = company.toObject();
+    companyObj.lattitude = company.latitude; // double 't' support
+
+    res.json({
+      ...companyObj, // flat structure for backward compatibility
+      company: {
+        ...companyObj,
+        _id: company._id,
+        latitude: company.latitude,
+        lattitude: company.latitude, // double 't' support
+        longitude: company.longitude,
+        attendanceRadius: company.attendanceRadius || 100
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }
@@ -505,7 +538,10 @@ exports.createBranchWithLogo = async (req, res) => {
       weeklyHoliday,
       address,
       franchise,
-      userLimit
+      userLimit,
+      latitude,
+      longitude,
+      attendanceRadius
     } = req.body;
 
     if (!businessName || !businessEmail || !password) {
@@ -597,7 +633,10 @@ exports.createBranchWithLogo = async (req, res) => {
       isBranch: true,
       parentCompanyId: parentCompany._id,
       branches: [],
-      userLimit: requestedUserLimit
+      userLimit: requestedUserLimit,
+      latitude,
+      longitude,
+      attendanceRadius: attendanceRadius ? Number(attendanceRadius) : 100
     });
 
     await branch.save();

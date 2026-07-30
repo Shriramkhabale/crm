@@ -21,11 +21,27 @@ const attendanceSchema = new mongoose.Schema({
     outTime: { type: Date },
     outLocation: { type: String },
     outPhoto: { type: String },
+    // Auto punch-out audit fields (per session)
+    isAutoPunchOut: { type: Boolean, default: false },
+    punchOutSource: { type: String },          // e.g. "AUTO_MIDNIGHT" or "MANUAL"
+    outPhotoMissingReason: { type: String },   // e.g. "AUTO_PUNCH_OUT"
   }],
-   // NEW: For leave-linked attendance
+  // NEW: For leave-linked attendance
   leaveType: { type: String },
   leaveRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Leave' },  
 
+  // NEW: Automatic Punch Out fields
+  isAutoPunchOut: { type: Boolean, default: false },
+  punchOutSource: { type: String },
+  locationFile: { type: String },
+  locationFileUrl: { type: String },
+  locationUrl: { type: String },
+  locationsLink: { type: String },
+  attendanceLink: { type: String },
+  cloudinaryLink: { type: String },
+  autoPunchOut: { type: Boolean, default: false },
+  punchOutType: { type: String },
+  outPhotoMissingReason: { type: String },
 }, { timestamps: true });
 
 // Indexes for efficient queries (unique by company/employee/date, and leave-linked)
