@@ -92,6 +92,15 @@ console.log("--------------------------------------");
       if (notes) batch.notes = notes;  // Update notes
       batch.status = notes && notes.includes('completed') ? 'completed' : batch.status;  // Auto-update status
       batch.updatedAt = new Date();
+
+      // Upload updated locations to Cloudinary as raw JSON
+      const cloudinaryUrl = await uploadLocationsToCloudinary(
+        batch.locations,
+        employeeId,
+        companyId,
+        taskId
+      );
+      if (cloudinaryUrl) batch.cloudinaryUrl = cloudinaryUrl;
       
       await batch.save();
       
@@ -99,7 +108,8 @@ console.log("--------------------------------------");
         message: 'Location batch appended successfully',
         batchId: batch._id,
         pointsAppended: newPoints.length,
-        totalPoints: batch.totalPoints
+        totalPoints: batch.totalPoints,
+        cloudinaryUrl: batch.cloudinaryUrl || null
       });
     } else {
       // CREATE MODE: New document
@@ -110,6 +120,14 @@ console.log("--------------------------------------");
       }
       
       const batchStartTime = new Date(Math.min(...validLocations.map(loc => loc.timestamp)));
+
+      // Upload locations to Cloudinary as raw JSON
+      const cloudinaryUrl = await uploadLocationsToCloudinary(
+        validLocations,
+        employeeId,
+        companyId,
+        taskId
+      );
       
       batch = new LocationTracking({
         employee: employeeId,
@@ -119,7 +137,8 @@ console.log("--------------------------------------");
         startTime: batchStartTime,
         endTime: new Date(),
         totalPoints: validLocations.length,
-        notes
+        notes,
+        cloudinaryUrl: cloudinaryUrl || undefined
       });
 
       await batch.save();
@@ -128,13 +147,65 @@ console.log("--------------------------------------");
         message: 'Location batch created successfully',
         batchId: batch._id,
         pointsSaved: validLocations.length,
-        totalPoints: batch.totalPoints
+        totalPoints: batch.totalPoints,
+        cloudinaryUrl: cloudinaryUrl || null
       });
     }
 
   } catch (error) {
     console.error('Create/Append location batch error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * Helper: Upload location array to Cloudinary as a raw JSON file
+ * Uses upload_preset "ios_location_upload" and resource_type "raw"
+ * Returns the secure_url string, or null on failure
+ */
+const uploadLocationsToCloudinary = async (locations, employeeId, companyId, taskId) => {
+  try {
+    const cloudinary = require('../config/cloudinaryConfig');
+
+    // Build the JSON payload
+    const payload = {
+      employeeId: employeeId.toString(),
+      companyId: companyId.toString(),
+      taskId: taskId ? taskId.toString() : null,
+      uploadedAt: new Date().toISOString(),
+      locations: locations.map(loc => ({
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        timestamp: loc.timestamp instanceof Date ? loc.timestamp.toISOString() : loc.timestamp,
+        speed: loc.speed || null,
+        accuracy: loc.accuracy || null,
+        batteryLevel: loc.batteryLevel || null
+      }))
+    };
+
+    const jsonString = JSON.stringify(payload);
+
+    // Use a unique public_id per employee+company+task so it overwrites on append
+    const publicId = `location_tracking/${companyId}/${employeeId}${taskId ? '_' + taskId : ''}`;
+
+    // Upload as raw buffer via base64 data URI
+    const dataUri = `data:application/json;base64,${Buffer.from(jsonString).toString('base64')}`;
+
+    const result = await cloudinary.uploader.upload(dataUri, {
+      resource_type: 'raw',
+      upload_preset: 'ios_location_upload',
+      public_id: publicId,
+      overwrite: true,
+      invalidate: true
+    });
+
+    console.log('✅ Location data uploaded to Cloudinary:', result.secure_url);
+    return result.secure_url;
+
+  } catch (err) {
+    // Non-fatal: log error but don't block the main response
+    console.error('⚠️  Cloudinary upload failed (location saved to MongoDB only):', err.message);
+    return null;
   }
 };
 
@@ -191,6 +262,7 @@ const getLastLocation = async (req, res) => {
     res.json({
       employeeId,
       taskId: latestBatch.taskId,  // Include associated task
+      cloudinaryUrl: latestBatch.cloudinaryUrl || null,  // Android can fetch full JSON from here
       lastLocation: {
         latitude: lastPoint.latitude,
         longitude: lastPoint.longitude,
@@ -204,12 +276,51 @@ const getLastLocation = async (req, res) => {
   }
 };
 
+/**
+ * Get Cloudinary URL for a specific employee's location batch
+ * Android uses this to directly download the full location JSON from Cloudinary
+ * GET /api/location/cloudinary-url/:employeeId
+ */
+const getCloudinaryUrl = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { taskId } = req.query;
+    const companyId = req.user.companyId || req.user.userId;
+
+    const filter = {
+      employee: new mongoose.Types.ObjectId(employeeId),
+      company: companyId
+    };
+    if (taskId) filter.taskId = new mongoose.Types.ObjectId(taskId);
+
+    const batch = await LocationTracking.findOne(filter).sort({ endTime: -1 });
+
+    if (!batch) {
+      return res.status(404).json({ message: 'No location batch found for this employee' });
+    }
+
+    if (!batch.cloudinaryUrl) {
+      return res.status(404).json({ message: 'No Cloudinary URL found — data may only be in MongoDB' });
+    }
+
+    res.json({
+      employeeId,
+      taskId: batch.taskId || null,
+      cloudinaryUrl: batch.cloudinaryUrl,
+      totalPoints: batch.totalPoints,
+      lastUpdated: batch.updatedAt || batch.endTime
+    });
+  } catch (error) {
+    console.error('Get Cloudinary URL error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 
 // EXPLICIT EXPORTS - This ensures the object is complete and reliable
 module.exports = {
   createLocationBatch,
   getLocationHistory,
-  getLastLocation
+  getLastLocation,
+  getCloudinaryUrl
 };
-
-

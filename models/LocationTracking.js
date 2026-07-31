@@ -37,6 +37,7 @@ const locationTrackingSchema = new mongoose.Schema({
     default: 'active' 
   },
   notes: { type: String },  // Updated on appends
+  cloudinaryUrl: { type: String },  // Cloudinary secure_url for the uploaded JSON (accessible by any platform)
 }, { 
   timestamps: true 
 });
