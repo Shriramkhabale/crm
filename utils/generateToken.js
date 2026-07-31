@@ -14,7 +14,16 @@ const generateToken = (user) => {
 
   console.log('🔐 JWT Payload being signed:', payload);
 
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
+  
+  // Refresh token only needs minimal info to identify the user
+  const refreshTokenPayload = {
+    id: payload.id,
+    role: payload.role
+  };
+  const refreshToken = jwt.sign(refreshTokenPayload, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+  return { accessToken, refreshToken };
 };
 
 module.exports = generateToken;

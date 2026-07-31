@@ -15,6 +15,9 @@ router.post('/register-superadmin', authController.registerSuperadmin);
 // Login route
 router.post('/login', authController.login);
 
+// Refresh Token route
+router.post('/refresh-token', authController.refreshToken);
+
 router.get('/superadmin', protect, authorizeRole('superadmin'), authController.getSuperadmin);
 
 // Update superadmin profile (protected, superadmin only)

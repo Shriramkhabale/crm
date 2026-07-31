@@ -119,10 +119,11 @@ exports.login = async (req, res) => {
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      const token = generateToken(user);
+      const { accessToken, refreshToken } = generateToken(user);
       return res.json({
         message: "Login successful",
-        token,
+        token: accessToken,
+        refreshToken,
         user: { id: user._id, email: user.email, role: "superadmin", type: "superadmin" }
       });
     }
@@ -150,10 +151,11 @@ exports.login = async (req, res) => {
         });
       }
 
-      const token = generateToken(user);
+      const { accessToken, refreshToken } = generateToken(user);
       return res.json({
         message: "Login successful",
-        token,
+        token: accessToken,
+        refreshToken,
         user: {
           id: user._id,
           name: user.teamMemberName,
@@ -189,10 +191,11 @@ exports.login = async (req, res) => {
         });
       }
 
-      const token = generateToken({ _id: user._id, role: "company" });
+      const { accessToken, refreshToken } = generateToken({ _id: user._id, role: "company" });
       return res.json({
         message: "Login successful",
-        token,
+        token: accessToken,
+        refreshToken,
         user: {
           id: user._id,
           businessName: user.businessName,
@@ -220,7 +223,7 @@ if (user) {
   }
 
   // FIXED: Include superadmin and franchise in the token
-  const token = generateToken({
+  const { accessToken, refreshToken } = generateToken({
     _id: user._id,
     role: user.role || 'super_employee',
     accessPermissions: user.accessPermissions || [],
@@ -232,7 +235,8 @@ if (user) {
 
   return res.json({
     message: "Login successful",
-    token,
+    token: accessToken,
+    refreshToken,
     user: {
       id: user._id,
       name: user.teamMemberName,
@@ -261,10 +265,11 @@ if (user) {
         });
       }
 
-      const token = generateToken({ _id: user._id, role: "branch", company: user.company });
+      const { accessToken, refreshToken } = generateToken({ _id: user._id, role: "branch", company: user.company });
       return res.json({
         message: "Login successful",
-        token,
+        token: accessToken,
+        refreshToken,
         user: {
           id: user._id,
           email: user.email,
@@ -281,10 +286,11 @@ if (user) {
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-      const token = generateToken({ _id: user._id, role: "franchise" });
+      const { accessToken, refreshToken } = generateToken({ _id: user._id, role: "franchise" });
       return res.json({
         message: "Login successful",
-        token,
+        token: accessToken,
+        refreshToken,
         user: {
           id: user._id,
           franchiseName: user.franchiseName,
@@ -428,5 +434,77 @@ exports.resetPassword = async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Refresh Token
+exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'Refresh token is required' });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    
+    // Determine which collection to query based on role
+    let user = null;
+    const userId = decoded.id;
+    const role = decoded.role;
+
+    if (role === 'superadmin') user = await Superadmin.findById(userId);
+    else if (role === 'employee') user = await Employee.findById(userId);
+    else if (role === 'company') user = await Company.findById(userId);
+    else if (role === 'super_employee' || !role) user = await SuperEmployee.findById(userId); 
+    else if (role === 'branch') user = await Branch.findById(userId);
+    else if (role === 'franchise') user = await Franchise.findById(userId);
+
+    if (!user) {
+      // Fallback search if role isn't perfectly mapped
+      user = await Superadmin.findById(userId) ||
+             await Employee.findById(userId) ||
+             await Company.findById(userId) ||
+             await Franchise.findById(userId) ||
+             await SuperEmployee.findById(userId) ||
+             await Branch.findById(userId);
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate new tokens
+    // Note: Since user objects for some roles are structured differently, 
+    // it's safer to pass a generic payload if it's not superadmin or employee,
+    // but generateToken handles formatting if _id exists.
+    let payloadInput = user;
+    
+    // For roles that were passed inline to generateToken during login:
+    if (role === 'company') payloadInput = { _id: user._id, role: "company" };
+    else if (role === 'branch') payloadInput = { _id: user._id, role: "branch", company: user.company };
+    else if (role === 'franchise') payloadInput = { _id: user._id, role: "franchise" };
+    else if (role === 'super_employee' || user.type === 'super_employee') {
+      payloadInput = {
+        _id: user._id,
+        role: user.role || 'super_employee',
+        accessPermissions: user.accessPermissions || [],
+        superadmin: user.superadmin,
+        franchise: user.franchise
+      };
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } = generateToken(payloadInput);
+
+    res.json({
+      token: accessToken,
+      refreshToken: newRefreshToken
+    });
+  } catch (error) {
+    console.error('Refresh Token Error:', error);
+    if (error.name === 'TokenExpiredError') {
+      return res.status(403).json({ message: 'Refresh token has expired. Please login again.' });
+    }
+    return res.status(403).json({ message: 'Invalid refresh token' });
   }
 };
